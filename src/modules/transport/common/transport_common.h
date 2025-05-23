@@ -112,6 +112,11 @@ int nvshmemt_mem_handle_cache_remove(nvshmem_transport_t t,
                                      struct transport_mem_handle_info_cache *cache, void *addr);
 int nvshmemt_mem_handle_cache_fini(struct transport_mem_handle_info_cache *cache);
 
+int nvshmemt_put_signal(struct nvshmem_transport *tcurr, int pe, rma_verb_t write_verb,
+                                  std::vector<rma_memdesc_t> &write_remote, std::vector<rma_memdesc_t> &write_local,
+                                  std::vector<rma_bytesdesc_t> &write_bytes_desc, amo_verb_t sig_verb, amo_memdesc_t *sig_target,
+                                  amo_bytesdesc_t sig_bytes_desc, int is_proxy);
+
 extern "C" {
 int nvshmemt_init(nvshmem_transport_t *transport, struct nvshmemi_cuda_fn_table *table,
                   int api_version);

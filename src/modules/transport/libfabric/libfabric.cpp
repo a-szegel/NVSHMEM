@@ -1657,6 +1657,7 @@ int nvshmemt_init(nvshmem_transport_t *t, struct nvshmemi_cuda_fn_table *table, 
     transport->host_ops.show_info = nvshmemt_libfabric_show_info;
     transport->host_ops.progress = nvshmemt_libfabric_progress;
     transport->host_ops.enforce_cst = nvshmemt_libfabric_enforce_cst;
+    transport->host_ops.psig = nvshmemt_put_signal;
 
     transport->attr = NVSHMEM_TRANSPORT_ATTR_CONNECTED;
     transport->is_successfully_initialized = true;
