@@ -386,9 +386,9 @@ int nvshmemt_libfabric_put_signal_completion(nvshmem_transport_t transport, nvsh
     std::unordered_map<uint64_t, std::pair<nvshmemt_libfabric_gdr_op_ctx_t*, int>>::iterator iter;
 
     if (unlikely(*addr == FI_ADDR_NOTAVAIL)) {
-            status = -1;
-            NVSHMEMI_ERROR_JMP(status, NVSHMEMX_ERROR_INVALID_VALUE, out,
-                               "Write w/imm returned with invalid src address.\n");
+        status = -1;
+        NVSHMEMI_ERROR_JMP(status, NVSHMEMX_ERROR_INVALID_VALUE, out,
+                           "Write w/imm returned with invalid src address.\n");
     }
 
     if (is_write_comp) {
@@ -506,7 +506,7 @@ static int nvshmemt_libfabric_rma_impl(struct nvshmem_transport *tcurr, int pe, 
     op_size = bytesdesc.elembytes * bytesdesc.nelems;
 
     if (verb.desc == NVSHMEMI_OP_P) {
-        assert(!imm_data); // Write w/ imm not suppored with NVSHMEMI_OP_P on Libfabric transport
+        assert(!imm_data);  // Write w/ imm not suppored with NVSHMEMI_OP_P on Libfabric transport
         if (libfabric_state->provider == NVSHMEMT_LIBFABRIC_PROVIDER_EFA) {
             nvshmemt_libfabric_gdr_op_ctx_t *p_buf;
             do {
@@ -562,7 +562,8 @@ static int nvshmemt_libfabric_rma_impl(struct nvshmem_transport *tcurr, int pe, 
                                   target_ep, remote_addr, remote_handle->key, NULL);
         } while (try_again(tcurr, &status, &num_retries));
     } else if (verb.desc == NVSHMEMI_OP_G || verb.desc == NVSHMEMI_OP_GET) {
-        assert(!imm_data); // Write w/ imm not suppored with NVSHMEMI_OP_G/GET on Libfabric transport
+        assert(
+            !imm_data);  // Write w/ imm not suppored with NVSHMEMI_OP_G/GET on Libfabric transport
         uintptr_t remote_addr;
         if (libfabric_state->prov_info->domain_attr->mr_mode & FI_MR_VIRT_ADDR)
             remote_addr = (uintptr_t)remote->ptr;
@@ -818,8 +819,10 @@ out:
 }
 
 int nvshmemt_put_signal_unordered(struct nvshmem_transport *tcurr, int pe, rma_verb_t write_verb,
-                                  std::vector<rma_memdesc_t> &write_remote, std::vector<rma_memdesc_t> &write_local,
-                                  std::vector<rma_bytesdesc_t> &write_bytes_desc, amo_verb_t sig_verb, amo_memdesc_t *sig_target,
+                                  std::vector<rma_memdesc_t> &write_remote,
+                                  std::vector<rma_memdesc_t> &write_local,
+                                  std::vector<rma_bytesdesc_t> &write_bytes_desc,
+                                  amo_verb_t sig_verb, amo_memdesc_t *sig_target,
                                   amo_bytesdesc_t sig_bytes_desc, int is_proxy) {
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)tcurr->state;
     int target_ep, status;
@@ -832,16 +835,20 @@ int nvshmemt_put_signal_unordered(struct nvshmem_transport *tcurr, int pe, rma_v
 
     sequence_count = libfabric_state->proxy_put_signal_per_peer_seq_counter[target_ep]++;
 
-    assert(write_remote.size() == write_local.size() && write_local.size() == write_bytes_desc.size());
-    for (int i = 0; i < write_remote.size(); i++){
-        status = nvshmemt_libfabric_rma_impl(tcurr, pe, write_verb, &write_remote[i], &write_local[i], write_bytes_desc[i], is_proxy, &sequence_count);
+    assert(write_remote.size() == write_local.size() &&
+           write_local.size() == write_bytes_desc.size());
+    for (int i = 0; i < write_remote.size(); i++) {
+        status =
+            nvshmemt_libfabric_rma_impl(tcurr, pe, write_verb, &write_remote[i], &write_local[i],
+                                        write_bytes_desc[i], is_proxy, &sequence_count);
         if (unlikely(status)) {
-            NVSHMEMI_ERROR_PRINT("Error in nvshmemt_put_signal_unordered, could not submit write #%d\n", i);
+            NVSHMEMI_ERROR_PRINT(
+                "Error in nvshmemt_put_signal_unordered, could not submit write #%d\n", i);
             goto out;
         }
     }
 
-    /* Hack num_writes into retflag */
+    /* Repurpose retflag to store num_writes */
     sig_target->retflag = write_remote.size();
     assert(use_staged_atomics == true);
     status = nvshmemt_libfabric_gdr_amo_impl(tcurr, pe, NULL, sig_verb, sig_target, sig_bytes_desc, is_proxy, &sequence_count);
