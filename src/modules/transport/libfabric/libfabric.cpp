@@ -840,7 +840,7 @@ int nvshmemt_put_signal_unordered(struct nvshmem_transport *tcurr, int pe, rma_v
         }
     }
 
-    /* Hack num_writes into retflag */
+    /* Repurpose retflag to store num_writes */
     sig_target->retflag = write_remote.size();
     assert(use_staged_atomics == true);
     status = nvshmemt_libfabric_gdr_amo_impl(tcurr, pe, NULL, sig_verb, sig_target, sig_bytes_desc, is_proxy, &sequence_count);
