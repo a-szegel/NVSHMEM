@@ -334,10 +334,16 @@ int nvshmemi_get_devices_by_distance(int *device_arr, int max_dev_per_pe,
             continue;
         }
 
+        /* Calculate PE Index from nic_id. Each PE gets max_dev_per_pe assigned to them.
+         * If there are 8 NIC's and 4 PE's, the nic -> PE mapping looks like
+         * nic_id:  0   1   2   3   4   5   6   7
+         * pe_idx:  0   0   1   1   2   2   3   3
+         */
+        int pe_idx = (nic_id - (nic_id % max_dev_per_pe)) / max_dev_per_pe;
         for (pairs_iter = pe_dev_pairs.begin(); pairs_iter != pe_dev_pairs.end(); pairs_iter++) {
             /* Never change for a less optimal NIC. */
 
-            if ((*pairs_iter).pe_idx != nic_id) {
+            if ((*pairs_iter).pe_idx != pe_idx) {
                 continue;
             }
 
