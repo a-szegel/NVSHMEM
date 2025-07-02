@@ -5,9 +5,9 @@
  */
 
 #include "transport_common.h"
-#include <assert.h>                  // for assert
-#include <stdint.h>                  // for uint64_t, uintptr_t
-#include <stdlib.h>                  // for atoi, calloc, free, realloc
+#include <stdint.h>  // for uint64_t, uintptr_t
+#include <stdlib.h>  // for atoi, calloc, free, realloc
+#include <utility>
 #include "non_abi/nvshmemx_error.h"  // for NVSHMEMI_ERROR_PRINT, NVSHMEMX_E...
 
 struct transport_mem_handle_info_cache {
@@ -221,30 +221,18 @@ int nvshmemt_mem_handle_cache_fini(struct transport_mem_handle_info_cache *cache
     return NVSHMEMX_SUCCESS;
 }
 
-int nvshmemt_put_signal(struct nvshmem_transport *tcurr, int pe, rma_verb_t write_verb,
-                                  std::vector<rma_memdesc_t> &write_remote, std::vector<rma_memdesc_t> &write_local,
-                                  std::vector<rma_bytesdesc_t> &write_bytes_desc, amo_verb_t sig_verb, amo_memdesc_t *sig_target,
-                                  amo_bytesdesc_t sig_bytes_desc, int is_proxy) {
-    int status;
-    assert(tcurr->host_ops.rma);
-    assert(tcurr->host_ops.amo);
-    assert(write_remote.size() == write_local.size() && write_local.size() == write_bytes_desc.size());
-    for (int i = 0; i < write_remote.size(); i++){
-        status = tcurr->host_ops.rma(tcurr, pe, write_verb, &write_remote[i], &write_local[i], write_bytes_desc[i], is_proxy);
-        if (unlikely(status)) goto out;
+bool check_egm(void *addr, std::unordered_map<void *, size_t> *egm_map) {
+    if (egm_map == NULL) {
+        return false;
+    }
+    if (egm_map->count(addr)) {
+        return true;
     }
 
-    if (tcurr->host_ops.fence)
-        status = tcurr->host_ops.fence(tcurr, pe, is_proxy);
-    if (unlikely(status)) goto out;
-
-    status = tcurr->host_ops.amo(tcurr, pe, NULL, sig_verb, sig_target, sig_bytes_desc, is_proxy);
-
-out:
-    if (status) {
-        NVSHMEMI_ERROR_PRINT("Received error %d when trying to perform a nvshmemt_put_signal operation.\n",
-                             status);
-        status = NVSHMEMX_ERROR_INTERNAL;
+    for (auto iter = egm_map->begin(); iter != egm_map->end(); ++iter) {
+        if ((addr >= iter->first) && ((char *)addr < ((char *)iter->first + iter->second))) {
+            return true;
+        }
     }
-    return status;
+    return false;
 }

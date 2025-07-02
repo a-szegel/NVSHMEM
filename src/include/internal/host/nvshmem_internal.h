@@ -34,9 +34,14 @@
 
 #define MAX_TRANSPORT_EP_COUNT 1
 
-#define NUM_G_BUF_ELEMENTS 1024 * 1024
+#ifndef G_BUF_SIZE
+#define G_BUF_SIZE (nvshmemi_options.G_BUF_SIZE)
+#endif
 
-#define G_COALESCING_BUF_SIZE NUM_G_BUF_ELEMENTS *NVSHMEMI_WARP_SIZE * sizeof(uint64_t)
+#ifndef G_COALESCING_BUF_SIZE
+#define G_COALESCING_BUF_SIZE (nvshmemi_options.G_COALESCING_BUF_SIZE)
+#endif
+
 #define NVSHMEMI_CHECK_INIT_STATUS()                                                 \
     do {                                                                             \
         if (nvshmemi_device_state.nvshmemi_is_nvshmem_initialized == false)          \

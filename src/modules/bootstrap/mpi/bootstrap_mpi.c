@@ -79,7 +79,8 @@ static int bootstrap_mpi_allgather(const void *sendbuf, void *recvbuf, int lengt
                                    struct bootstrap_handle *handle) {
     int status = MPI_SUCCESS;
 
-    status = MPI_Allgather(sendbuf, length, MPI_BYTE, recvbuf, length, MPI_BYTE, bootstrap_comm);
+    status = MPI_Allgather(((sendbuf == recvbuf) ? MPI_IN_PLACE : sendbuf), length, MPI_BYTE,
+                           recvbuf, length, MPI_BYTE, bootstrap_comm);
     BOOTSTRAP_NE_ERROR_JMP(status, MPI_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
                            "MPI_Allgather failed\n");
 
@@ -91,7 +92,8 @@ static int bootstrap_mpi_alltoall(const void *sendbuf, void *recvbuf, int length
                                   struct bootstrap_handle *handle) {
     int status = MPI_SUCCESS;
 
-    status = MPI_Alltoall(sendbuf, length, MPI_BYTE, recvbuf, length, MPI_BYTE, bootstrap_comm);
+    status = MPI_Alltoall(((sendbuf == recvbuf) ? MPI_IN_PLACE : sendbuf), length, MPI_BYTE,
+                          recvbuf, length, MPI_BYTE, bootstrap_comm);
     BOOTSTRAP_NE_ERROR_JMP(status, MPI_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
                            "MPI_Alltoall failed\n");
 
@@ -205,6 +207,7 @@ int nvshmemi_bootstrap_plugin_init(void *mpi_comm, bootstrap_handle_t *handle,
     handle->finalize = bootstrap_mpi_finalize;
     handle->pre_init_ops = NULL;
     handle->comm_state = &bootstrap_comm;
+    handle->show_info = bootstrap_mpi_showinfo;
 
     goto out;
 

@@ -87,11 +87,11 @@ class nvshmemi_mem_remote_transport final {
         }
     }
 
-    int gather_mem_handles(nvshmemi_symmetric_heap &obj, uint64_t heap_offset, size_t size);
+    int gather_mem_handles(nvshmemi_symmetric_heap &obj, uint64_t heap_offset, size_t size,
+                           bool ext_allocation = false);
     /* On-demand registration and release of memory */
-    int register_mem_handle(nvshmem_mem_handle_t *local_handles, int transport_idx,
-                            nvshmem_mem_handle_t *in, void *buf, size_t size,
-                            nvshmem_transport_t current);
+    int register_mem_handle(nvshmem_mem_handle_t *local_handles, int transport_idx, void *buf,
+                            size_t size, nvshmem_transport_t current);
     int release_mem_handles(nvshmem_mem_handle_t *handles, nvshmemi_symmetric_heap &obj);
 
     int is_mem_handle_null(nvshmem_mem_handle_t *handle) {

@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <chrono>
 #include <functional>
+#include <getopt.h>
 #include <iomanip>
 #include <iostream>
 #include <stdio.h>

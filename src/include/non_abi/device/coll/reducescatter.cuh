@@ -13,7 +13,7 @@
 #include "non_abi/device/common/nvshmemi_common_device.cuh"
 #include "non_abi/device/team/nvshmemi_team_defines.cuh"
 #include "non_abi/nvshmem_build_options.h"
-#ifdef NVSHMEM_ENABLE_ALL_DEVICE_INLINING
+#if defined(NVSHMEM_ENABLE_ALL_DEVICE_INLINING) || defined(__NVSHMEM_NUMBA_SUPPORT__)
 #include "non_abi/device/pt-to-pt/transfer_device.cuh"
 #else
 #include "non_abi/device/pt-to-pt/nvshmemi_transfer_api.cuh"
@@ -140,20 +140,27 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_reducescatter_threadgroup
 
     constexpr bool is_float_v = is_float<TYPE>::value;
     constexpr bool is_double_v = is_double<TYPE>::value;
+    constexpr bool is_half_prec = is_half<TYPE>::value || is_bfloat<TYPE>::value;
     /* For SUM/AND/XOR/OR, support is untyped */
     /* For MIN/MAX, support is type specific */
     constexpr bool is_mcast_red_op =
         NVSHMEMI_MCAST_RDXN_OP_IS_CAP_UNTYPED(OP) ||
         ((OP == RDXN_OPS_MIN || OP == RDXN_OPS_MAX) && (!is_float_v && !is_double_v));
-    constexpr bool is_mcast_type = (sizeof(TYPE) >= sizeof(uint32_t));
+    constexpr bool is_mcast_canoncial_type = (sizeof(TYPE) >= sizeof(uint32_t));
+    bool is_half_precondition =
+        is_half_prec && nreduce >= 2 && (nvshmemi_device_state_d.team_pool[team]->size % 2 == 0);
+    bool is_nvls_algo_supported =
+        ((is_mcast_red_op && is_mcast_canoncial_type) ||
+         (OP == RDXN_OPS_SUM && is_half_precondition)) &&
+        (nvshmemi_device_state_d.team_pool[team]->nvls_rsc_base_ptr != NULL) &&
+        ((nreduce * sizeof(TYPE)) % 4 == 0);
 
     int reducescatter_algo = nvshmemi_device_state_d.gpu_coll_env_params_var.reducescatter_algo;
     /* This 2-level selection logic is implemented to reduce code duplication of calling leaf
      * functions on the device code */
     switch (reducescatter_algo) {
         case 0: /* default selection */
-            if (nvshmemi_device_state_d.team_pool[team]->nvls_rsc_base_ptr != NULL &&
-                ((nreduce * sizeof(TYPE)) % 4 == 0) && is_mcast_type && is_mcast_red_op) {
+            if (is_nvls_algo_supported) {
                 reducescatter_algo = 3; /* NVLS One Shot */
             } else {
                 reducescatter_algo = 2; /* P2P One Shot */
@@ -162,8 +169,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_reducescatter_threadgroup
         case 2: /* One Shot */
             break;
         case 3:
-            if (nvshmemi_device_state_d.team_pool[team]->nvls_rsc_base_ptr != NULL &&
-                ((nreduce * sizeof(TYPE)) % 4 == 0) && is_mcast_type && is_mcast_red_op) {
+            if (is_nvls_algo_supported) {
                 /* NVLS one shot */
                 break;
             } else {
@@ -188,6 +194,9 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_reducescatter_threadgroup
             assert(0);
             break;
     }
+
+    /* since both allpush and nvls one-shot algos don't store data remotely at the end of the
+     * collective, threadfence_system when cuda_graph is enabled is not required */
 }
 
 #endif /* __CUDA_ARCH__ */

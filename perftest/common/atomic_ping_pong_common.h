@@ -111,7 +111,11 @@
         h_size_arr = (uint64_t *)h_tables[0];                                                \
         h_lat = (double *)h_tables[1];                                                       \
                                                                                              \
-        flag_d = nvshmem_malloc(sizeof(uint64_t));                                           \
+        if (use_mmap) {                                                                      \
+            flag_d = allocate_mmap_buffer(sizeof(uint64_t), mem_handle_type, use_egm);       \
+        } else {                                                                             \
+            flag_d = nvshmem_malloc(sizeof(uint64_t));                                       \
+        }                                                                                    \
         CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(uint64_t)));                                 \
                                                                                              \
         CUDA_CHECK(cudaStreamCreate(&stream));                                               \

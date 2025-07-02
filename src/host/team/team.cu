@@ -70,6 +70,19 @@ int nvshmem_team_split_strided(nvshmem_team_t parent_team, int PE_start, int PE_
                                        PE_size, config, config_mask, new_team);
 }
 
+int nvshmemx_team_get_uniqueid(nvshmemx_team_uniqueid_t *uniqueid) {
+    NVSHMEMI_CHECK_INIT_STATUS();
+    NVSHMEM_API_NOT_SUPPORTED_WITH_LIMITED_MPG_RUNS();
+    return nvshmemi_team_get_uniqueid(uniqueid);
+}
+
+int nvshmemx_team_init(nvshmem_team_t *team, nvshmem_team_config_t *config, long config_mask,
+                       int npes, int pe_idx_in_team) {
+    NVSHMEMI_CHECK_INIT_STATUS();
+    NVSHMEM_API_NOT_SUPPORTED_WITH_LIMITED_MPG_RUNS();
+    return nvshmemi_team_create(team, config, config_mask, npes, pe_idx_in_team);
+}
+
 int nvshmem_team_split_2d(nvshmem_team_t parent_team, int xrange,
                           const nvshmem_team_config_t *xaxis_config, long xaxis_mask,
                           nvshmem_team_t *xaxis_team, const nvshmem_team_config_t *yaxis_config,

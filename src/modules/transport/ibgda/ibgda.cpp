@@ -54,7 +54,7 @@
 #define NVSHMEMI_IBGDA_CQE_SIZE 64
 #define NVSHMEMI_IBGDA_MAX_INLINE_SIZE (8 * 32)
 
-#define MAX_NUM_HCAS 16
+#define MAX_NUM_HCAS 48
 #define MAX_NUM_PORTS 4
 #define MAX_NUM_PES_PER_NODE 32
 
@@ -337,7 +337,7 @@ static gdr_t gdr_desc;
 static struct gdrcopy_function_table gdrcopy_ftable;
 static void *gdrcopy_handle = NULL;
 #endif
-static bool use_gdrcopy = 0;
+static bool use_gdrcopy = false;
 
 static ibgda_mem_type_t ibgda_nic_buf_location;
 static ibgda_nic_handler_t ibgda_nic_handler;
@@ -406,6 +406,7 @@ static size_t ibgda_get_host_page_size() {
     return host_page_size;
 }
 
+#ifdef NVSHMEM_USE_GDRCOPY
 int nvshmemt_ibgda_progress(nvshmem_transport_t t) {
     nvshmemt_ibgda_state_t *ibgda_state = (nvshmemt_ibgda_state_t *)t->state;
     int n_devs_selected = ibgda_state->n_devs_selected;
@@ -457,8 +458,11 @@ int nvshmemt_ibgda_progress(nvshmem_transport_t t) {
             }
         }
     }
-    return 0;
+    return NVSHMEMX_SUCCESS;
 }
+#else
+int nvshmemt_ibgda_progress(nvshmem_transport_t t) { return NVSHMEMX_ERROR_NOT_SUPPORTED; }
+#endif
 
 int nvshmemt_ibgda_show_info(struct nvshmem_transport *transport, int style) {
     NVSHMEMI_ERROR_PRINT("ibgda show info not implemented");
@@ -492,8 +496,7 @@ int nvshmemt_ibgda_can_reach_peer(int *access, struct nvshmem_transport_pe_info 
     return status;
 }
 
-int nvshmemt_ibgda_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
-                                  nvshmem_mem_handle_t *mem_handle_in, void *buf, size_t length,
+int nvshmemt_ibgda_get_mem_handle(nvshmem_mem_handle_t *mem_handle, void *buf, size_t length,
                                   nvshmem_transport_t t, bool local_only) {
     int status = 0;
     struct nvshmem_transport *transport = (struct nvshmem_transport *)t;
@@ -514,6 +517,21 @@ int nvshmemt_ibgda_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
     handle = (struct ibgda_mem_handle *)mem_handle;
     handle->num_devs = n_devs_selected;
 
+    /*
+     * In cases where same physical memory has been mapped to multiple VAs (say VA1 and VA2)
+     * e.g., user buffers mmapped into symmetric heap. Using VA2 for buffer registration
+     * and gdrcopy.pin_buffer is unsupported in RM/nv-p2p (Ref nvbug 507809).
+     * We need to use VA1 (first mapped address mapped) as a work around.
+     * For an mmapped buffer, buf is VA2, we track the VA2->VA1 mapping during mmap call
+     * alias_va_ptr will hold the VA1 address, if applicable
+     */
+    void *alias_va_ptr = NULL;
+    if (transport->alias_va_map != NULL && transport->alias_va_map->count(buf)) {
+        INFO(ibgda_state->log_level, "IBGDA: alias va found for buf: %p, alias va: %p", buf,
+             transport->alias_va_map->operator[](buf));
+        alias_va_ptr = transport->alias_va_map->operator[](buf);
+    }
+
     for (int i = 0; i < n_devs_selected; ++i) {
         struct ibgda_device *device =
             ((struct ibgda_device *)ibgda_state->devices + ibgda_state->selected_dev_ids[i]);
@@ -522,7 +540,7 @@ int nvshmemt_ibgda_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
         status = nvshmemt_ib_common_reg_mem_handle(
             &ftable, device->pd, dev_handle, buf, length, local_only,
             ibgda_state->dmabuf_support_for_data_buffers, ibgda_cuda_syms, ibgda_state->log_level,
-            ibgda_state->options->IB_ENABLE_RELAXED_ORDERING);
+            ibgda_state->options->IB_ENABLE_RELAXED_ORDERING, alias_va_ptr);
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
                               "Unable to register memory handle.\n");
     }
@@ -587,13 +605,26 @@ int nvshmemt_ibgda_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
         assert((length & ((1ULL << transport->log2_cumem_granularity) - 1)) == 0);
 
         num_elements = length >> transport->log2_cumem_granularity;
+
+        // With user buffers being mmaped at the of the heap, incremently adding to lkeys vector
+        // won't be sufficient as buffers from end of heap could be registered. So we resize
+        // ibgda_device_lkeys vector to number of chunks  * n_devs_selected and populate entries
+        // as they are added.
+        size_t chunk_idx = ((char *)buf - (char *)t->heap_base) >> t->log2_cumem_granularity;
+        size_t num_chunks =
+            (((char *)buf - (char *)t->heap_base) + length + t->log2_cumem_granularity - 1) >>
+            t->log2_cumem_granularity;
+        if (ibgda_device_lkeys.size() < num_chunks * n_devs_selected) {
+            ibgda_device_lkeys.resize(num_chunks * n_devs_selected);
+        }
         while (num_elements > 0) {
             for (int i = 0; i < n_devs_selected; i++) {
                 device_lkey = htobe32(handle->dev_mem_handles[i].lkey);
                 nvshmemi_ibgda_device_key_t dev_key;
                 dev_key.key = device_lkey;
                 dev_key.next_addr = (uint64_t)buf + length;
-                ibgda_device_lkeys.emplace_back(dev_key);
+                ibgda_device_lkeys.at(((chunk_idx + num_elements - 1) * n_devs_selected) + i) =
+                    dev_key;
             }
             --num_elements;
         }
@@ -2936,17 +2967,21 @@ int nvshmemt_ibgda_connect_endpoints(nvshmem_transport_t t, int *selected_dev_id
         INFO(ibgda_state->log_level, "Creating %d RC QPs", device->rc.num_eps_per_pe);
         for (int i = 0; i < num_rc_eps; ++i) {
             // Do not create loopback to self
-            if (i / device->rc.num_eps_per_pe == mype) {
+            int dst_pe = (i + 1 + mype) % n_pes;
+            int offset = i / n_pes;
+            int mapped_i = dst_pe * device->rc.num_eps_per_pe + offset;
+            if (dst_pe == mype) {
                 continue;
             }
-            status = ibgda_create_qp(&device->rc.eps[i], device, portid, i,
+            status = ibgda_create_qp(&device->rc.eps[mapped_i], device, portid, mapped_i,
                                      NVSHMEMI_IBGDA_DEVICE_QP_TYPE_RC);
             NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
-                                  "ibgda_create_dci failed on RC #%d.", i);
+                                  "ibgda_create_dci failed on RC #%d.", mapped_i);
 
-            status = ibgda_get_rc_handle(&local_rc_handles[i], device->rc.eps[i], device);
+            status =
+                ibgda_get_rc_handle(&local_rc_handles[mapped_i], device->rc.eps[mapped_i], device);
             NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
-                                  "ibgda_get_rc_handle failed on RC #%d.", i);
+                                  "ibgda_get_rc_handle failed on RC #%d.", mapped_i);
         }
 
         if (num_rc_eps) {
@@ -3252,6 +3287,20 @@ int nvshmemt_ibgda_add_device_remote_mem_handles(nvshmem_transport_t t, int tran
     assert((size & ((1ULL << t->log2_cumem_granularity) - 1)) == 0);
 
     num_elements = size >> t->log2_cumem_granularity;
+
+    // With user buffers being mmaped at the of the heap, incremently adding to lkeys vector
+    // won't be sufficient as buffers from end of heap could be registered. So we resize
+    // ibgda_device_rkeys vector to number of chunks  * n_pes * n_devs_selected and populate entries
+    // as they are added.
+    size_t chunk_idx = heap_offset >> t->log2_cumem_granularity;
+    size_t num_chunks =
+        (heap_offset + size + t->log2_cumem_granularity - 1) >> t->log2_cumem_granularity;
+    // assuming all PEs have same num_devs
+    int num_devs = ((struct ibgda_mem_handle *)&mem_handles[t->index])->num_devs;
+    if (ibgda_device_rkeys.size() < num_chunks * n_pes * num_devs) {
+        ibgda_device_rkeys.resize(num_chunks * n_pes * num_devs);
+    }
+
     while (num_elements > 0) {
         for (int i = 0; i < n_pes; ++i) {
             // sizeof(struct ibgda_mem_handle) <= sizeof(nvshmem_mem_handle_t)
@@ -3259,6 +3308,9 @@ int nvshmemt_ibgda_add_device_remote_mem_handles(nvshmem_transport_t t, int tran
             // ibgda_mem_handle later.
             struct ibgda_mem_handle *gmhandle =
                 (struct ibgda_mem_handle *)&mem_handles[i * transport_stride + t->index];
+            assert((num_devs == gmhandle->num_devs) &&
+                   "Currently, we only support same number of "
+                   "devices per PE");
             for (int j = 0; j < gmhandle->num_devs; j++) {
                 struct nvshmemt_ib_common_mem_handle *handle =
                     (struct nvshmemt_ib_common_mem_handle *)&gmhandle->dev_mem_handles[j];
@@ -3266,7 +3318,8 @@ int nvshmemt_ibgda_add_device_remote_mem_handles(nvshmem_transport_t t, int tran
                 device_key.key = htobe32(handle->rkey);
                 device_key.next_addr = heap_offset + size;
 
-                ibgda_device_rkeys.emplace_back(device_key);
+                ibgda_device_rkeys.at(((chunk_idx + num_elements - 1) * n_pes * num_devs) +
+                                      (i * num_devs) + j) = device_key;
             }
         }
         --num_elements;
@@ -3909,7 +3962,6 @@ int nvshmemt_init(nvshmem_transport_t *t, struct nvshmemi_cuda_fn_table *table, 
     transport->host_ops.enforce_cst = NULL;
     transport->host_ops.add_device_remote_mem_handles =
         nvshmemt_ibgda_add_device_remote_mem_handles;
-    transport->host_ops.psig = NULL;
 
     transport->attr = NVSHMEM_TRANSPORT_ATTR_CONNECTED;
     transport->is_successfully_initialized = true;

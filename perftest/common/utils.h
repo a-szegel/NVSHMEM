@@ -13,6 +13,7 @@
 #ifndef UTILS
 #define UTILS
 #include <dlfcn.h>
+#include <nvml.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -33,9 +34,24 @@
 
 #define NVSHMEMI_TEST_STRINGIFY(x) #x
 
+#define MEM_TYPE_AUTO 0
+#define MEM_TYPE_POSIX_FD 1
+#define MEM_TYPE_FABRIC 2
+#define MEM_GRANULARITY 536870912  // 512MB
 #define CUMODULE_LOAD(CUMODULE, CUMODULE_PATH, ERROR) \
     CU_CHECK(cuModuleLoad(&CUMODULE, CUMODULE_PATH)); \
     ERROR = nvshmemx_cumodule_init(CUMODULE);
+
+#if CUDART_VERSION < 12040
+#define CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_FABRIC_SUPPORTED (CUdevice_attribute)128
+#define CU_MEM_HANDLE_TYPE_FABRIC (CUmemAllocationHandleType)0x8
+#define CU_CTX_SYNC_MEMOPS 0x80
+#endif
+
+#if CUDART_VERSION < 12020
+#define CU_MEM_LOCATION_TYPE_HOST_NUMA (CUmemLocationType)0x3
+#define CU_DEVICE_ATTRIBUTE_HOST_NUMA_ID (CUdevice_attribute)134
+#endif
 
 void init_test_case_kernel(CUfunction *kernel, const char *kernel_name);
 
@@ -223,7 +239,13 @@ extern size_t warmup_iters;
 extern size_t step_factor;
 extern size_t max_size_log;
 extern size_t stride;
+extern size_t mem_handle_type;
 extern bool bidirectional;
+
+extern void *nvml_handle;
+extern struct nvml_function_table nvml_ftable;
+extern const char *env_value;
+
 struct datatype_t {
     NVSHMEM_DATATYPE_T type;
     size_t size;
@@ -259,7 +281,10 @@ struct dir_t {
 };
 extern dir_t dir;
 
-extern __device__ int clockrate;
+extern bool use_graph;
+extern bool use_mmap;
+extern bool use_egm;
+
 extern bool use_cubin;
 
 void init_cumodule(const char *str);
@@ -267,6 +292,8 @@ void init_wrapper(int *c, char ***v);
 void finalize_wrapper();
 void alloc_tables(void ***table_mem, int num_tables, int num_entries_per_table);
 void free_tables(void **tables, int num_tables);
+uint64_t calculate_collective_size(const char *coll_name, uint64_t num_elems, uint64_t type_size,
+                                   int npes);
 void print_table_basic(const char *job_name, const char *subjob_name, const char *var_name,
                        const char *output_var, const char *units, const char plus_minus,
                        uint64_t *size, double *value, int num_entries);
@@ -277,4 +304,53 @@ void print_table_v2(const char *job_name, const char *subjob_name, const char *v
                     const char *output_var, const char *units, const char plus_minus,
                     uint64_t *size, double **value, int num_entries, size_t num_iters);
 void read_args(int argc, char **argv);
+void *allocate_mmap_buffer(size_t size, int mem_handle_type, bool use_egm = false,
+                           bool reset_zero = false);
+void free_mmap_buffer(void *ptr);
+size_t pad_up(size_t size);
+
+/* Copied from CUDA 12.4 NVML header. */
+#if ((NVML_API_VERSION < 12) || (CUDA_VERSION < 12040))
+
+#ifndef NVML_GPU_FABRIC_STATE_COMPLETED
+#define NVML_GPU_FABRIC_STATE_COMPLETED 3
+#endif
+
+#ifndef nvmlGpuFabricInfo_v2
+#define nvmlGpuFabricInfo_v2 (unsigned int)(sizeof(nvmlGpuFabricInfo_v2_t) | (2 << 24U))
+#endif
+
+#ifndef NVML_GPU_FABRIC_UUID_LEN
+#define NVML_GPU_FABRIC_UUID_LEN 16
+#endif
+
+typedef unsigned char nvmlGpuFabricState_t;
+typedef struct {
+    unsigned int version;  //!< Structure version identifier (set to \ref nvmlGpuFabricInfo_v2)
+    unsigned char
+        clusterUuid[NVML_GPU_FABRIC_UUID_LEN];  //!< Uuid of the cluster to which this GPU belongs
+    nvmlReturn_t
+        status;  //!< Error status, if any. Must be checked only if state returns "complete".
+    unsigned int cliqueId;       //!< ID of the fabric clique to which this GPU belongs
+    nvmlGpuFabricState_t state;  //!< Current state of GPU registration process
+    unsigned int healthMask;     //!< GPU Fabric health Status Mask
+} nvmlGpuFabricInfo_v2_t;
+
+typedef nvmlGpuFabricInfo_v2_t nvmlGpuFabricInfoV_t;
+#endif
+/* end NVML Header defs. */
+
+struct nvml_function_table {
+    nvmlReturn_t (*nvmlInit)(void);
+    nvmlReturn_t (*nvmlShutdown)(void);
+    nvmlReturn_t (*nvmlDeviceGetHandleByPciBusId)(const char *pciBusId, nvmlDevice_t *device);
+    nvmlReturn_t (*nvmlDeviceGetP2PStatus)(nvmlDevice_t device1, nvmlDevice_t device2,
+                                           nvmlGpuP2PCapsIndex_enum caps,
+                                           nvmlGpuP2PStatus_t *p2pStatus);
+    nvmlReturn_t (*nvmlDeviceGetGpuFabricInfoV)(nvmlDevice_t device, nvmlGpuFabricInfoV_t *info);
+};
+
+int nvshmemi_nvml_ftable_init(struct nvml_function_table *nvml_ftable, void **nvml_handle);
+void nvshmemi_nvml_ftable_fini(struct nvml_function_table *nvml_ftable, void **nvml_handle);
+bool is_mnnvl_supported(int dev_id);
 #endif

@@ -5,15 +5,16 @@
  */
 
 #include "ucx.h"
-#include <assert.h>                                      // for assert
-#include <dlfcn.h>                                       // for dlopen
-#include <stdlib.h>                                      // for free
-#include <string.h>                                      // for memcpy
-#include <ucp/api/ucp.h>                                 // for ucp_...
-#include <ucs/memory/memory_type.h>                      // for UCS_...
-#include <ucs/type/status.h>                             // for UCS_OK
-#include <ucs/type/thread_mode.h>                        // for UCS_...
-#include <deque>                                         // for deque
+#include <assert.h>                  // for assert
+#include <dlfcn.h>                   // for dlopen
+#include <stdlib.h>                  // for free
+#include <string.h>                  // for memcpy
+#include <ucp/api/ucp.h>             // for ucp_...
+#include <ucs/memory/memory_type.h>  // for UCS_...
+#include <ucs/type/status.h>         // for UCS_OK
+#include <ucs/type/thread_mode.h>    // for UCS_...
+#include <deque>                     // for deque
+#include <unordered_map>
 #include "bootstrap_host_transport/env_defs_internal.h"  // for nvsh...
 #include "non_abi/nvshmem_version.h"
 #include "non_abi/nvshmemx_error.h"                                        // for NVSH...
@@ -40,6 +41,7 @@ static uint64_t nvshmemt_ucx_completed_host_atomics = 0;
 static struct gdrcopy_function_table gdrcopy_ftable;
 static void *gdrcopy_handle = NULL;
 static gdr_t gdr_desc;
+static bool is_egm;
 #endif
 
 static uint64_t nvshmemt_ucx_recv_headers_in_use = 0;
@@ -235,6 +237,8 @@ int nvshmemt_ucx_release_mem_handle(nvshmem_mem_handle_t *mem_handle, nvshmem_tr
     nvshmemt_ucx_mem_handle_info_t *handle_info = NULL;
     ucs_status_t ucs_rc;
     int status = 0;
+    void *curr_ptr;
+    size_t buff_size = 0;
 
     if (!handle->local_only) {
         handle_info = (nvshmemt_ucx_mem_handle_info_t *)nvshmemt_mem_handle_cache_get(
@@ -243,7 +247,10 @@ int nvshmemt_ucx_release_mem_handle(nvshmem_mem_handle_t *mem_handle, nvshmem_tr
 
     if (handle_info) {
 #ifdef NVSHMEM_USE_GDRCOPY
-        if (use_gdrcopy) {
+
+        /* we track if the memory handle is EGM based so that GDRCOPY can be disabled*/
+        is_egm = check_egm(handle->ptr, t->egm_map);
+        if (use_gdrcopy && !is_egm) {
             status = gdrcopy_ftable.unmap(gdr_desc, handle_info->mh, handle_info->cpu_ptr_base,
                                           handle_info->size);
             NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "gdr_unmap failed\n");
@@ -252,6 +259,7 @@ int nvshmemt_ucx_release_mem_handle(nvshmem_mem_handle_t *mem_handle, nvshmem_tr
             NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "gdr_unpin failed\n");
         }
 #endif
+        buff_size = handle_info->size;
         free(handle_info);
     }
 
@@ -269,14 +277,18 @@ int nvshmemt_ucx_release_mem_handle(nvshmem_mem_handle_t *mem_handle, nvshmem_tr
         ucp_rkey_destroy(handle->ep_rkey_proxy);
     }
 
-    if (ucx_state->cache != NULL)
-        nvshmemt_mem_handle_cache_remove(t, ucx_state->cache, handle->ptr);
+    if (ucx_state->cache != NULL) {
+        curr_ptr = handle->ptr;
+        do {
+            nvshmemt_mem_handle_cache_remove(t, ucx_state->cache, curr_ptr);
+            curr_ptr = (char *)curr_ptr + (1ULL << t->log2_cumem_granularity);
+        } while (curr_ptr < (char *)handle->ptr + buff_size);
+    }
 out:
     return status;
 }
 
-int nvshmemt_ucx_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
-                                nvshmem_mem_handle_t *mem_handle_in, void *buf, size_t length,
+int nvshmemt_ucx_get_mem_handle(nvshmem_mem_handle_t *mem_handle, void *buf, size_t length,
                                 nvshmem_transport_t t, bool local_only) {
     ucs_status_t ucs_rc;
     transport_ucx_state_t *ucx_state = (transport_ucx_state_t *)t->state;
@@ -285,6 +297,22 @@ int nvshmemt_ucx_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
     ucp_mem_map_params_t params;
     int status = 0;
     void *rkey = NULL;
+    void *curr_ptr;
+
+    /*
+     * In cases where same physical memory has been mapped to multiple VAs (say VA1 and VA2)
+     * e.g., user buffers mmapped into symmetric heap. Using VA2 for buffer registration
+     * and gdrcopy.pin_buffer is unsupported in RM/nv-p2p (Ref nvbug 5072809).
+     * We need to use VA1 (first mapped address mapped) as a work around.
+     * For an mmapped buffer, buf is VA2, we track the VA2->VA1 mapping during mmap call
+     * alias_va_ptr will hold the VA1 address, if applicable
+     */
+    void *alias_va_ptr = NULL;
+    if (t->alias_va_map != NULL && t->alias_va_map->count(buf)) {
+        INFO(ucx_state->log_level, "UCX: alias va found for buf: %p, alias va: %p", buf,
+             t->alias_va_map->operator[](buf));
+        alias_va_ptr = t->alias_va_map->operator[](buf);
+    }
 
     handle->ep_rkey_proxy = NULL;
     handle->ep_rkey_host = NULL;
@@ -323,9 +351,20 @@ int nvshmemt_ucx_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
     }
 
 #ifdef NVSHMEM_USE_GDRCOPY
-    if (use_gdrcopy && !local_only) {
-        status =
-            gdrcopy_ftable.pin_buffer(gdr_desc, (unsigned long)buf, length, 0, 0, &handle_info->mh);
+    /* we track if the memory handle is EGM based so that GDRCOPY can be disabled*/
+    is_egm = check_egm(buf, t->egm_map);
+
+    if (use_gdrcopy && !local_only && !is_egm) {
+        void *gdr_buf = buf;
+
+        // if applicable, alias_va_ptr (VA1) is only used for pin_buffer() and
+        // computing the offset below off = gdr_buf - info.va
+        // We use "buf" (VA2) everywhere else
+        if (alias_va_ptr != NULL) {
+            gdr_buf = alias_va_ptr;
+        }
+        status = gdrcopy_ftable.pin_buffer(gdr_desc, (unsigned long)gdr_buf, length, 0, 0,
+                                           &handle_info->mh);
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, error,
                               "gdrcopy pin_buffer failed \n");
 
@@ -340,16 +379,23 @@ int nvshmemt_ucx_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
         // calculate the offset from the head of the mapping to the
         // beginning of the buffer
         handle_info->cpu_ptr =
-            (void *)((char *)handle_info->cpu_ptr_base + ((char *)buf - (char *)info.va));
+            (void *)((char *)handle_info->cpu_ptr_base + ((char *)gdr_buf - (char *)info.va));
     }
 #endif
     if (!local_only) {
-        if (ucx_state->cache == NULL) {
-            status = nvshmemt_mem_handle_cache_init(t, &ucx_state->cache);
-            NVSHMEMI_NZ_ERROR_JMP(status, status, error, "mem handle cache initialization failed.");
-        }
-        status = nvshmemt_mem_handle_cache_add(t, ucx_state->cache, buf, (void *)handle_info);
-        NVSHMEMI_NZ_ERROR_JMP(status, status, error, "Unable to add key to mem handle info cache");
+        curr_ptr = buf;
+        do {
+            if (ucx_state->cache == NULL) {
+                status = nvshmemt_mem_handle_cache_init(t, &ucx_state->cache);
+                NVSHMEMI_NZ_ERROR_JMP(status, status, error,
+                                      "mem handle cache initialization failed.");
+            }
+            status =
+                nvshmemt_mem_handle_cache_add(t, ucx_state->cache, curr_ptr, (void *)handle_info);
+            NVSHMEMI_NZ_ERROR_JMP(status, status, error,
+                                  "Unable to add key to mem handle info cache");
+            curr_ptr = (char *)curr_ptr + (1ULL << t->log2_cumem_granularity);
+        } while (curr_ptr < (char *)buf + length);
     }
     /* TODO: Find a way that doesn't rely on the rkey being smaller than an arbitrary value. */
     assert(handle->rkey_packed_buf_len < NVSHMEMT_UCP_RKEY_PACKED_MAX_LEN);
@@ -1400,7 +1446,6 @@ int nvshmemt_init(nvshmem_transport_t *t, struct nvshmemi_cuda_fn_table *table, 
     transport->host_ops.progress = nvshmemt_ucx_progress;
     transport->host_ops.enforce_cst = nvshmemt_ucx_enforce_cst_at_target;
     transport->host_ops.enforce_cst_at_target = NULL;
-    transport->host_ops.psig = nvshmemt_put_signal;
     transport->attr = NVSHMEM_TRANSPORT_ATTR_CONNECTED;
     transport->state = (void *)ucx_state;
     transport->is_successfully_initialized = true;

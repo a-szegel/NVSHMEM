@@ -40,8 +40,9 @@ void nvshmemi_mem_p2p_transport::print_mem_handle(int pe_id, int transport_idx,
     int i = pe_id;
     int j = transport_idx;
     nvshmemi_state_t *state = obj.get_state();
-    char *hex = nvshmemu_hexdump(&obj.handles_.back()[i * state->num_initialized_transports + j],
-                                 sizeof(CUipcMemHandle));
+    char *hex =
+        nvshmemu_hexdump(&obj.p2p_handles_.back()[i * state->num_initialized_transports + j],
+                         sizeof(CUipcMemHandle));
     INFO(NVSHMEM_INIT, "[%d] cuIpcOpenMemHandle fromhandle 0x%s", state->mype, hex);
     NVSHMEMU_HOST_PTR_FREE(hex);
     INFO(NVSHMEM_INIT, "[%d] cuIpcOpenMemHandle tobuf %p", state->mype,
@@ -61,11 +62,13 @@ int nvshmemi_mem_p2p_transport::create_proc_map(nvshmemi_symmetric_heap &obj) {
                                             &nvshmemi_boot_handle);
     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "allgather of pids failed \n");
 
-    NVSHMEMU_FOR_EACH(pe, obj.get_state()->npes){NVSHMEMU_FOR_EACH_IF(
-        j, obj.get_state()->num_initialized_transports,
-        (NVSHMEMU_IS_BIT_SET(obj.get_state()->transport_bitmap, j) &&
-         (obj.get_state()->transports[j]->cap[pe] & NVSHMEM_TRANSPORT_CAP_MAP)),
-        { proc_map_[peer_pids[pe]] = pe; })}
+    NVSHMEMU_FOR_EACH(pe, obj.get_state()->npes) {
+        NVSHMEMU_FOR_EACH_IF(
+            j, obj.get_state()->num_initialized_transports,
+            (NVSHMEMU_IS_BIT_SET(obj.get_state()->transport_bitmap, j) &&
+             (obj.get_state()->transports[j]->cap[pe] & NVSHMEM_TRANSPORT_CAP_MAP)),
+            { proc_map_[peer_pids[pe]] = pe; });
+    }
 
     INFO(NVSHMEM_MEM, "I am connected to %lu p2p processes (including myself)", proc_map_.size());
 out:
@@ -91,6 +94,7 @@ nvshmemi_mem_p2p_transport::nvshmemi_mem_p2p_transport(int mype, int npes) {
     int flag = false;
     nvmlDevice_t local_device;
     nvmlGpuFabricInfoV_t fabricInfo = {}, fabricInfo1 = {}, fabricInfo2 = {};
+    const unsigned char zero[NVML_GPU_FABRIC_UUID_LEN] = {0};
     nvmlGpuFabricInfoV_t *pe_fabricInfo = nullptr;
     fabricInfo.version = nvmlGpuFabricInfo_v2;
     fabricInfo1.version = nvmlGpuFabricInfo_v2;
@@ -161,7 +165,6 @@ nvshmemi_mem_p2p_transport::nvshmemi_mem_p2p_transport(int mype, int npes) {
             goto out;
         }
 
-        fabricInfo.clusterUuid[0] = '\0';
         nvml_status = nvml_ftable_.nvmlDeviceGetGpuFabricInfoV(local_device, &fabricInfo);
         NVSHMEMI_NE_ERROR_JMP(nvml_status, NVML_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
                               "nvmlDeviceGetGpuFabricInfoV() failed... Detection of MNNVL "
@@ -173,7 +176,7 @@ nvshmemi_mem_p2p_transport::nvshmemi_mem_p2p_transport(int mype, int npes) {
 
         pe_fabricInfo[mype] = fabricInfo;
         status =
-            nvshmemi_boot_handle.allgather((void *)&pe_fabricInfo[mype], (void *)pe_fabricInfo,
+            nvshmemi_boot_handle.allgather((void *)&fabricInfo, (void *)pe_fabricInfo,
                                            sizeof(nvmlGpuFabricInfoV_t), &nvshmemi_boot_handle);
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
                               "allgather of pe_fabricInfo failed \n");
@@ -188,7 +191,7 @@ nvshmemi_mem_p2p_transport::nvshmemi_mem_p2p_transport(int mype, int npes) {
 
         fabricInfo1 = pe_fabricInfo[mype];
         if (fabricInfo1.state < NVML_GPU_FABRIC_STATE_COMPLETED ||
-            fabricInfo1.clusterUuid[0] == '\0')
+            memcmp(fabricInfo1.clusterUuid, zero, NVML_GPU_FABRIC_UUID_LEN) == 0)
             nvshmemi_has_mnnvl_fabric_ = 0;
 
         nvshmemi_mem_handle_type_ =
@@ -199,7 +202,6 @@ nvshmemi_mem_p2p_transport::nvshmemi_mem_p2p_transport(int mype, int npes) {
         for (int i = 0; i < npes && nvshmemi_has_mnnvl_fabric_; i++) {
             fabricInfo2 = pe_fabricInfo[i];
             if ((fabricInfo2.state == NVML_GPU_FABRIC_STATE_COMPLETED) &&
-                (fabricInfo2.clusterUuid[0] != '\0') &&
                 (memcmp(fabricInfo1.clusterUuid, fabricInfo2.clusterUuid,
                         NVML_GPU_FABRIC_UUID_LEN) == 0) &&
                 (fabricInfo1.cliqueId == fabricInfo2.cliqueId)) {
@@ -276,16 +278,23 @@ nvshmemi_mem_p2p_transport::~nvshmemi_mem_p2p_transport() {
  * nvshmemi_mem_remote_transport specific functions
  */
 int nvshmemi_mem_remote_transport::gather_mem_handles(nvshmemi_symmetric_heap &obj,
-                                                      uint64_t heap_offset, size_t size) {
+                                                      uint64_t heap_offset, size_t size,
+                                                      bool ext_allocation) {
     int status = 0;
 
     NVSHMEMU_FOR_EACH(i, obj.get_state()->num_initialized_transports) {
         nvshmem_transport_t tcurr = obj.get_state()->transports[i];
         if (NVSHMEMU_IS_BIT_SET(obj.get_state()->transport_bitmap, i) &&
             NVSHMEMI_TRANSPORT_OPS_IS_ADD_DEVICE_REMOTE_MEM(tcurr)) {
-            status = tcurr->host_ops.add_device_remote_mem_handles(
-                tcurr, obj.get_state()->num_initialized_transports, obj.handles_.back().data(),
-                heap_offset, size);
+            if (ext_allocation) {
+                status = tcurr->host_ops.add_device_remote_mem_handles(
+                    tcurr, obj.get_state()->num_initialized_transports,
+                    obj.remote_mmap_handles_.back().data(), heap_offset, size);
+            } else {
+                status = tcurr->host_ops.add_device_remote_mem_handles(
+                    tcurr, obj.get_state()->num_initialized_transports,
+                    obj.remote_handles_.back().data(), heap_offset, size);
+            }
             NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
                                   "add_device_remote_mem_handles failed \n");
 
@@ -299,12 +308,11 @@ out:
 }
 
 int nvshmemi_mem_remote_transport::register_mem_handle(nvshmem_mem_handle_t *local_handles,
-                                                       int transport_idx, nvshmem_mem_handle_t *in,
-                                                       void *buf, size_t size,
+                                                       int transport_idx, void *buf, size_t size,
                                                        nvshmem_transport_t current) {
     if (!NVSHMEMI_TRANSPORT_OPS_IS_GET_MEM(current)) return 0;
     return current->host_ops.get_mem_handle((nvshmem_mem_handle_t *)(local_handles + transport_idx),
-                                            in, buf, size, current, false);
+                                            buf, size, current, false);
 }
 
 int nvshmemi_mem_remote_transport::release_mem_handles(nvshmem_mem_handle_t *handles,
@@ -321,7 +329,7 @@ int nvshmemi_mem_remote_transport::release_mem_handles(nvshmem_mem_handle_t *han
                                  NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
                                                        "transport release memhandle failed \n");
                              }
-                         })
+                         });
 out:
     return status;
 }

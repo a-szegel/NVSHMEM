@@ -73,9 +73,11 @@ if(NOT SubBuild)
       elseif(CUDAToolkit_VERSION_MAJOR EQUAL 11 AND CUDAToolkit_VERSION_MINOR LESS 8)
         set(CMAKE_CUDA_ARCHITECTURES "70;80" CACHE STRING "CUDA ARCHITECTURES" FORCE)
       elseif(CUDAToolkit_VERSION_MAJOR EQUAL 11 OR (CUDAToolkit_VERSION_MAJOR EQUAL 12 AND CUDAToolkit_VERSION_MINOR LESS 8))
-        set(CMAKE_CUDA_ARCHITECTURES "70;80;90" CACHE STRING "CUDA ARCHITECTURES" FORCE)
+        set(CMAKE_CUDA_ARCHITECTURES "70-real;80-real;89-real;90" CACHE STRING "CUDA ARCHITECTURES" FORCE)
+      elseif(CUDAToolkit_VERSION_MAJOR EQUAL 13)
+        set(CMAKE_CUDA_ARCHITECTURES "80-real;89-real;90-real;100-real;120" CACHE STRING "CUDA ARCHITECTURES" FORCE)
       else()
-        set(CMAKE_CUDA_ARCHITECTURES "70;80;90;100" CACHE STRING "CUDA ARCHITECTURES" FORCE)
+        set(CMAKE_CUDA_ARCHITECTURES "70-real;80-real;89-real;90-real;100-real;120" CACHE STRING "CUDA ARCHITECTURES" FORCE)
       endif()
     endif()
   endif()
@@ -115,6 +117,12 @@ if(NOT SubBuild)
 #  endif()
 endif()
 
+if(CUDAToolkit_VERSION_MAJOR LESS 13)
+  set(EXAMPLES_CXX_STANDARD 11)
+else()
+  set(EXAMPLES_CXX_STANDARD 17)
+endif()
+
 add_library(nvshmem_example_helper INTERFACE)
 target_link_libraries(nvshmem_example_helper INTERFACE CUDA::cudart CUDA::cuda_driver)
 if(NVSHMEM_TEST_STATIC_LIB)
@@ -122,7 +130,6 @@ target_link_libraries(nvshmem_example_helper INTERFACE nvshmem)
 else()
 target_link_libraries(nvshmem_example_helper INTERFACE nvshmem_host nvshmem_device)
 endif()
-target_compile_features(nvshmem_example_helper INTERFACE cxx_std_11 cuda_std_11)
 
 # Unused by any examples currently compiled.
 # TODO: Resurrect the shmem-based-init example.
@@ -169,14 +176,49 @@ set(OPTIONAL_MPI_EXAMPLES
   ring-bcast.cu
   ring-reduce.cu
   moe_shuffle.cu
+  user-buffer.cu
   )
+
+set(CUTLASS_EXAMPLES
+    gemm_allreduce/gemmAR_fusion_blackwell_fp16.cu
+   )
+
 LIST(APPEND ALL_EXAMPLES ${MPI_EXAMPLES} ${OPTIONAL_MPI_EXAMPLES})
+
+if (NVSHMEM_BUILD_CUTLASS_EXAMPLES)
+    message("Building CUTLASS examples")
+    set(EXAMPLES_CXX_STANDARD 17) #CUTLASS needs C++ 17
+    if(NOT DEFINED ENV{CUTLASS_HOME})
+        message(FATAL_ERROR "Please set CUTLASS_HOME to CUTLASS directory.")
+    endif()
+    set(CUTLASS_INCLUDE_DIR "$ENV{CUTLASS_HOME}/include")
+    set(CUTLASS_EXAMPLE_INCLUDE_DIR "$ENV{CUTLASS_HOME}/examples/common")
+    set(CUTLASS_UTIL_INCLUDE_DIR "$ENV{CUTLASS_HOME}/tools/util/include")
+
+    foreach(example ${CUTLASS_EXAMPLES})
+      get_filename_component(NAME_ ${example} NAME_WE)
+      add_executable(${NAME_} ${example})
+      message("${NAME_} ${example} ${CMAKE_CUDA_ARCHITECTURES}")
+      target_link_libraries(${NAME_} nvshmem_example_helper)
+      target_include_directories(${NAME_} PUBLIC
+                                 ${CUTLASS_INCLUDE_DIR}
+                                 ${CUTLASS_UTIL_INCLUDE_DIR}
+                                 ${CUTLASS_EXAMPLE_INCLUDE_DIR})
+      target_compile_options(${NAME_} PRIVATE
+                             --expt-relaxed-constexpr)
+      target_compile_definitions(${NAME_} PRIVATE
+                             "CUTLASS_NVCC_ARCHS=${CMAKE_CUDA_ARCHITECTURES}")
+    endforeach()
+
+    LIST(APPEND ALL_EXAMPLES ${CUTLASS_EXAMPLES})
+endif()
 
 foreach(example ${OPTIONAL_MPI_EXAMPLES})
   get_filename_component(NAME_ ${example} NAME_WE)
   add_executable(${NAME_} ${example})
   target_link_libraries(${NAME_} nvshmem_example_helper)
 endforeach()
+
 
 foreach(example ${ALL_EXAMPLES})
   get_filename_component(NAME_ ${example} NAME_WE)
@@ -185,8 +227,8 @@ foreach(example ${ALL_EXAMPLES})
   POSITION_INDEPENDENT_CODE ON
   CXX_STANDARD_REQUIRED ON
   CUDA_STANDARD_REQUIRED ON
-  CXX_STANDARD 11
-  CUDA_STANDARD 11
+  CXX_STANDARD "${EXAMPLES_CXX_STANDARD}"
+  CUDA_STANDARD "${EXAMPLES_CXX_STANDARD}"
   CUDA_SEPARABLE_COMPILATION ON
   )
 

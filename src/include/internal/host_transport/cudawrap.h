@@ -16,6 +16,11 @@
 #define CU_CTX_SYNC_MEMOPS 0x80
 #endif
 
+#if CUDART_VERSION < 12020
+#define CU_MEM_LOCATION_TYPE_HOST_NUMA (CUmemLocationType)0x3
+#define CU_DEVICE_ATTRIBUTE_HOST_NUMA_ID (CUdevice_attribute)134
+#endif
+
 #if CUDART_VERSION < 11020
 #define CU_MEM_HANDLE_TYPE_NONE (CUmemAllocationHandleType)0x0
 #endif
@@ -34,6 +39,12 @@ typedef CUresult(CUDAAPI *PFN_cuMemGetHandleForAddressRange_v11070)(void *handle
                                                                     size_t size,
                                                                     CUmemRangeHandleType handleType,
                                                                     unsigned long long flags);
+#endif
+
+#if CUDART_VERSION < 12000
+typedef void *CUlibrary;
+typedef CUresult(CUDAAPI *PFN_cuLibraryGetGlobal_v12000)(CUdeviceptr *dptr, size_t *bytes,
+                                                         CUlibrary library, const char *name);
 #endif
 
 #if CUDART_VERSION < 12010
@@ -83,6 +94,9 @@ typedef CUresult(CUDAAPI *PFN_cuGetProcAddress_v11030)(const char *symbol, void 
                                                        int driverVersion, cuuint64_t flags);
 typedef CUresult(CUDAAPI *PFN_cuDeviceGetAttribute_v2000)(int *pi, CUdevice_attribute attrib,
                                                           CUdevice dev);
+typedef CUresult(CUDAAPI *PFN_cuPointerGetAttribute_v4000)(void *data,
+                                                           CUpointer_attribute attribute,
+                                                           CUdeviceptr ptr);
 typedef CUresult(CUDAAPI *PFN_cuPointerSetAttribute_v6000)(const void *value,
                                                            CUpointer_attribute attribute,
                                                            CUdeviceptr ptr);
@@ -105,6 +119,9 @@ typedef CUresult(CUDAAPI *PFN_cuMemCreate_v10020)(CUmemGenericAllocationHandle *
                                                   unsigned long long flags);
 typedef CUresult(CUDAAPI *PFN_cuMemGetAllocationGranularity_v10020)(
     size_t *granularity, const CUmemAllocationProp *prop, CUmemAllocationGranularity_flags option);
+typedef CUresult(CUDAAPI *PFN_cuMemGetAllocationPropertiesFromHandle_v10020)(
+    size_t *granularity, const CUmemAllocationProp *prop, CUmemGenericAllocationHandle handle);
+
 typedef CUresult(CUDAAPI *PFN_cuMemAddressReserve_v10020)(CUdeviceptr *ptr, size_t size,
                                                           size_t alignment, CUdeviceptr addr,
                                                           unsigned long long flags);
@@ -128,6 +145,8 @@ typedef CUresult(CUDAAPI *PFN_cuStreamWriteValue64_v11070)(CUstream stream, CUde
                                                            cuuint64_t value, unsigned int flags);
 typedef CUresult(CUDAAPI *PFN_cuStreamWaitValue64_v11070)(CUstream stream, CUdeviceptr addr,
                                                           cuuint64_t value, unsigned int flags);
+typedef CUresult(CUDAAPI *PFN_cuMemRetainAllocationHandle_v11000)(
+    CUmemGenericAllocationHandle *handle, void *addr);
 #endif
 
 #define DEFINE_SYM(symbol, version) PFN_##symbol##_v##version pfn_##symbol;
@@ -136,6 +155,7 @@ struct nvshmemi_cuda_fn_table {
     DEFINE_SYM(cuCtxSynchronize, 2000)
     DEFINE_SYM(cuDeviceGet, 2000)
     DEFINE_SYM(cuDeviceGetAttribute, 2000)
+    DEFINE_SYM(cuPointerGetAttribute, 4000)
     DEFINE_SYM(cuPointerSetAttribute, 6000)
     DEFINE_SYM(cuModuleGetGlobal, 3020)
     DEFINE_SYM(cuGetErrorString, 6000)
@@ -152,10 +172,12 @@ struct nvshmemi_cuda_fn_table {
     DEFINE_SYM(cuMemAddressFree, 10020)
     DEFINE_SYM(cuMemMap, 10020)
     DEFINE_SYM(cuMemGetAllocationGranularity, 10020)
+    DEFINE_SYM(cuMemGetAllocationPropertiesFromHandle, 10020)
     DEFINE_SYM(cuMemImportFromShareableHandle, 10020)
     DEFINE_SYM(cuMemExportToShareableHandle, 10020)
     DEFINE_SYM(cuMemRelease, 10020)
     DEFINE_SYM(cuMemSetAccess, 10020)
+    DEFINE_SYM(cuMemGetAccess, 10020)
     DEFINE_SYM(cuMemUnmap, 10020)
     DEFINE_SYM(cuMulticastCreate, 12010)
     DEFINE_SYM(cuMulticastAddDevice, 12010)
@@ -164,6 +186,8 @@ struct nvshmemi_cuda_fn_table {
     DEFINE_SYM(cuMulticastGetGranularity, 12010)
     DEFINE_SYM(cuStreamWriteValue64, 11070)
     DEFINE_SYM(cuStreamWaitValue64, 11070)
+    DEFINE_SYM(cuMemRetainAllocationHandle, 11000)
+    DEFINE_SYM(cuLibraryGetGlobal, 12000)
 
     /* CUDA Driver functions loaded with dlsym() */
     DEFINE_SYM(cuInit, 2000)
@@ -225,6 +249,16 @@ struct nvshmemi_cuda_fn_table {
             (void)table->pfn_cuGetErrorString(err, &errStr);                        \
             fprintf(stderr, "%s:%d Cuda failure '%s'", __FILE__, __LINE__, errStr); \
         }                                                                           \
+    } while (false)
+
+// Report failure but clear error and continue
+#define CUCHECKIGNORE_NO_PRINT(table, cmd)                   \
+    do {                                                     \
+        CUresult err = table->pfn_##cmd;                     \
+        if (err != CUDA_SUCCESS) {                           \
+            const char *errStr;                              \
+            (void)table->pfn_cuGetErrorString(err, &errStr); \
+        }                                                    \
     } while (false)
 
 #define CUCHECKTHREAD(table, cmd, args)                                             \

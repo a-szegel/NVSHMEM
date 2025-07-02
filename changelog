@@ -1,4 +1,59 @@
 ===============================================================================
+                               Changes in 3.3.0
+===============================================================================
+# Enabled GA platform support for Blackwell B200/GB200NVL72-based systems. Additionally, enabled SASS support for Ada architecture.
+# Added support for official python language bindings (`nvshmem4py`) enabling symmetric memory management, on-stream RMA and collective APIs
+to aid in development of custom kernels using symmetric memory and enable fine-grained communication in native Python.
+The ``nvshmem4py`` package is available via PyPi wheels/conda installers.
+# Added support for fast-kernels centric (cuTLASS) tile-granular NVLS device-sided collectives to aid
+development of fused distributed GeMM kernels
+# Added support for flexible team initialization API (``nvshmemx_team_init``) using an arbitrary set of PEs to enable non-linear,
+non-contiguous PE indexing, if desired.
+# Added support for symmetric user-buffer registration (``nvshmemx_buffer_register_symmetric``) to enable ML
+frameworks to "bring-your-own-buffer" (BYOB) for zero-copy communication kernels.
+# Added support for narrow-types (``float16, ``bfloat16``) precision support for NVLS ``reducescatter`` collective
+and LL8 `fcollect` algorithm for low-latency collectives.
+# Added support for device-side ``nvshmem_broadcastmem``, ``nvshmem_fcollectmem`` APIs in the library.
+# Added support for CUDA module-independent loading using ``nvshmemx_culibrary_init``.
+# Added support for leveraging multiple Queue-Pairs (QPs) on LAG bonded NICs for RDMA transports. Users can use
+``NVSHMEM_IB_NUM_RC_PER_DEVICE`` environment variable to tune this value, as desired.
+# Added support to randomize QP assignment for multiple GPU endpoints when communicating over IBGDA transport.
+# Added CUDA graph capture capabilities to on-stream collectives performance benchmarks using `--cudagraph` command-line
+parameter.
+# Enabled host-side clang compilation support for NVSHMEM host library.
+# Improved GPU thread-occupancy for on-stream ``fcollect`` when utilizing NVLS and LL algorithms by 30%.
+# Improved multi-SM NVLS on-stream collectives to utilize CTA adaptively as a function of NVLINK domain size.
+# Improved runtime-detection of CUDA VMM support and fallback to legacy pinned memory allocation `cudaMalloc`,
+when platform support is not available for VMM.
+# Improved dynamic GID detection for RoCE transports in containerized environment, when querying the GID from sysfs could throw errors.
+# Improved perftest presentation layer to provide additional ``count`` column capturing total number of elements per operation,
+independent of datatype size.
+# Improved pt-to-pt signaling latency to always leverage CE-centric APIs `cuStreamWriteValue/cuStreamWaitValue` by 20%.
+# Fixed a bug in perftest reporting when both datatype, reduceop is specified.
+# Fixed an application crash with ``nvshmemx_fcollect_on_stream`` attempts to use more CTA than available NVSHMEM teams.
+# Fixed an application crash when NVSHMEM remote transports attempt to use more than 16 HCAs per node.
+# Fixed an application crash in the ``nvshmemx_mc_ptr`` API that is caused when executed on a platform without NVLS support.
+# Fixed a compile-time error with LLVM IR bitcode device library when compiling with clang-llvm > 19.
+# Fixed a compile-time error with IBGDA support when built without GDRCopy support. 
+# Fixed a compile-time error with ``moe_shuffle.cu`` due to a missing `getopt` header.
+# Fixed a data corruption bug in device-side pt-to-pt get/put bandwidth test due to missing usage of non-symmetric
+memory buffers for bandwidth summarization.  
+# Fixed a host clang compilation bug due to missing `__CUDA_ARCH__` conditional check for non-CUDA device inline
+assembly codepath.
+# Fixed a bug in the symmetric memory management layer that was caused due to missing override for ``NVSHMEM_CUMEM_GRANULARITY``
+for static device memory heaps (`cudaMalloc`).
+# Fixed a data corruption bug in on-stream NVLS 2-shot allreduce, 1-shot allgather collective that was caused
+due to missing memory fence to order data and barrier.
+# Fixed a stale sysfs filepath used for nvidia-peermem discovery that caused regression when running with
+CUDA 12.8 or above
+# Fixed a hang in MPI bootstrap allgather collective that was caused by incorrect usage of MPI_IN_PLACE
+operations. 
+# Fixed a data correctness bug in the LLVM IR bitcode device library that caused incorrect results
+for 16-byte aligned put/get operations which had a size that was not a multiple of 16 bytes.
+See https://forums.developer.nvidia.com/t/bug-with-nvshmem-3-2-5-for-bitcode-compiling/327847
+
+
+===============================================================================
                                Changes in 3.2.0
 ===============================================================================
 # Enable experimental platform support for Blackwell B200-based systems.

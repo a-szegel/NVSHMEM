@@ -18,6 +18,7 @@ template <typename T>
 void nvshmemi_call_broadcast_on_stream_kernel(nvshmem_team_t team, T *dest, const T *source,
                                               size_t nelems, int PE_root, cudaStream_t stream) {
     int tmp;
+    int in_cuda_graph = 0;
     std::string type_str(typeid(T).name());
     if (nvshmemi_broadcast_maxblocksize.find(type_str) == nvshmemi_broadcast_maxblocksize.end()) {
         CUDA_RUNTIME_CHECK(cudaOccupancyMaxPotentialBlockSize(
@@ -28,8 +29,12 @@ void nvshmemi_call_broadcast_on_stream_kernel(nvshmem_team_t team, T *dest, cons
                                     ? nelems
                                     : nvshmemi_broadcast_maxblocksize[type_str];
     int num_blocks = 1;
-    broadcast_on_stream_kernel<T>
-        <<<num_blocks, num_threads_per_block, 0, stream>>>(team, dest, source, nelems, PE_root);
+    cudaStreamCaptureStatus status;
+    CUDA_RUNTIME_CHECK(cudaStreamIsCapturing(stream, &status));
+    if (status == cudaStreamCaptureStatusActive) in_cuda_graph = 1;
+
+    broadcast_on_stream_kernel<T><<<num_blocks, num_threads_per_block, 0, stream>>>(
+        team, dest, source, nelems, PE_root, in_cuda_graph);
     CUDA_RUNTIME_CHECK(cudaGetLastError());
 }
 

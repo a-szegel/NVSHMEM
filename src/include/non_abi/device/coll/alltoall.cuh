@@ -21,12 +21,10 @@ template <typename T, threadgroup_t SCOPE>
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_alltoall_allpush_threadgroup(
     nvshmem_team_t team, T *dest, const T *source, size_t nelems) {
     nvshmemi_team_t *teami = nvshmemi_device_state_d.team_pool[team];
-    int PE_start = teami->start;
-    int stride = teami->stride;
     int PE_size = teami->size;
     int next_rank, src_offset, dst_offset;
     const int mype = nvshmemi_device_state_d.mype;
-    int my_idx_in_active_set = (mype - PE_start) / stride;
+    int my_idx_in_active_set = teami->my_pe;
     int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
     int groupSize = nvshmemi_threadgroup_size<SCOPE>();
     uint64_t *psync = (uint64_t *)nvshmemi_team_get_psync(teami, ALLTOALL);
@@ -41,10 +39,10 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_alltoall_allpush_threadgr
     /* Do remote ops and local ops < 16 bytes from a single thread */
     /* TODO: Find a more optimal transfer point than 16 bytes */
     for (int i = myIdx; i < PE_size; i += groupSize) {
-        next_rank = PE_start + ((my_idx_in_active_set + i) % PE_size) * stride;
+        next_rank = nvshmemi_team_translate_pe_to_team_world_wrap(teami, my_idx_in_active_set + i);
         void *peer_base_addr = (void *)__ldg(
             (const long long unsigned *)nvshmemi_device_state_d.peer_heap_base_p2p + next_rank);
-        src_offset = nelems * ((next_rank - PE_start) / stride);
+        src_offset = nelems * ((i + my_idx_in_active_set) % PE_size);
         if (!peer_base_addr) {
             /* We are breaking rank with the rest of the group here so send the RMA with thread
              * scope. */
@@ -63,8 +61,9 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_alltoall_allpush_threadgr
         if (my_warp_idx >= first_unused_warp) {
             for (int ii = my_warp_idx - first_unused_warp; ii < PE_size;
                  ii += (num_warps - first_unused_warp)) {
-                next_rank = PE_start + ((my_idx_in_active_set + ii) % PE_size) * stride;
-                src_offset = nelems * ((next_rank - PE_start) / stride);
+                next_rank =
+                    nvshmemi_team_translate_pe_to_team_world_wrap(teami, my_idx_in_active_set + ii);
+                src_offset = nelems * ((my_idx_in_active_set + ii) % PE_size);
                 void *peer_base_addr = (void *)__ldg(
                     (const long long unsigned *)nvshmemi_device_state_d.peer_heap_base_p2p +
                     next_rank);
@@ -76,8 +75,9 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_alltoall_allpush_threadgr
         }
     } else if (msgsize > NVSHMEMI_ALLTOALL_SMALL_MSGSIZE) {
         for (int ii = 0; ii < PE_size; ii++) {
-            next_rank = PE_start + ((my_idx_in_active_set + ii) % PE_size) * stride;
-            src_offset = nelems * ((next_rank - PE_start) / stride);
+            next_rank =
+                nvshmemi_team_translate_pe_to_team_world_wrap(teami, my_idx_in_active_set + ii);
+            src_offset = nelems * ((my_idx_in_active_set + ii) % PE_size);
             void *peer_base_addr = (void *)__ldg(
                 (const long long unsigned *)nvshmemi_device_state_d.peer_heap_base_p2p + next_rank);
             if (peer_base_addr) {
@@ -96,7 +96,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_alltoall_allpush_threadgr
     }
     nvshmemi_threadgroup_sync<SCOPE>();
     for (int i = myIdx; i < PE_size; i += groupSize) {
-        next_rank = PE_start + ((my_idx_in_active_set + i) % PE_size) * stride;
+        next_rank = nvshmemi_team_translate_pe_to_team_world_wrap(teami, my_idx_in_active_set + i);
         void *peer_base_addr = (void *)__ldg(
             (const long long unsigned *)nvshmemi_device_state_d.peer_heap_base_p2p + next_rank);
         if (peer_base_addr) {
@@ -106,7 +106,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_alltoall_allpush_threadgr
 
     nvshmemi_threadgroup_sync<SCOPE>();
     for (int i = myIdx; i < PE_size; i += groupSize) {
-        next_rank = PE_start + ((my_idx_in_active_set + i) % PE_size) * stride;
+        next_rank = nvshmemi_team_translate_pe_to_team_world_wrap(teami, my_idx_in_active_set + i);
         nvshmemi_wait_until_greater_than_equals<uint64_t>((psync + next_rank), *pwrk,
                                                           NVSHMEMI_CALL_SITE_SIGNAL_WAIT_UNTIL_GE);
     }
@@ -123,26 +123,22 @@ template <typename T, threadgroup_t SCOPE>
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_alltoall_p2p_allpush_threadgroup(
     nvshmem_team_t team, T *dest, const T *source, size_t nelems) {
     nvshmemi_team_t *teami = nvshmemi_device_state_d.team_pool[team];
-    int PE_start = teami->start;
-    int PE_stride = teami->stride;
-    int stride = teami->stride;
     int PE_size = teami->size;
     int next_rank;
     int src_offset;
     int dst_offset;
-    const int mype = nvshmemi_device_state_d.mype;
-    int my_idx_in_active_set = (mype - PE_start) / PE_stride;
+    int my_idx_in_active_set = teami->my_pe;
     T *dst_ptr;
-    int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
     int groupSize = nvshmemi_threadgroup_size<SCOPE>();
 
     for (int ii = 0; ii < PE_size; ii++) {
-        next_rank = PE_start + ((my_idx_in_active_set + ii) % PE_size) * stride;
-        src_offset = nelems * ((next_rank - PE_start) / stride);
-        dst_offset = nelems * ((mype - PE_start) / stride);
+        next_rank = nvshmemi_team_translate_pe_to_team_world_wrap(teami, my_idx_in_active_set + ii);
+        src_offset = nelems * ((my_idx_in_active_set + ii) % PE_size);
+        dst_offset = nelems * teami->my_pe;
         dst_ptr = (T *)nvshmemi_ptr((void *)(dest + dst_offset), next_rank);
         nvshmemi_memcpy_threadgroup<SCOPE>(dst_ptr, source + src_offset, nelems * sizeof(T));
     }
+
     nvshmemi_barrier_threadgroup<SCOPE>(team);
 }
 

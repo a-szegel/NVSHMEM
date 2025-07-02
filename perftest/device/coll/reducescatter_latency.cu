@@ -15,7 +15,7 @@
 #include "coll_test.h"
 #define LARGEST_DT int64_t
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 extern "C" {
 #endif
 
@@ -84,7 +84,7 @@ extern "C" {
 CALL_RDXN_OPS_ALL_TG(int32, int32_t)
 CALL_RDXN_OPS_ALL_TG(int64, int64_t)
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 }
 #endif
 
@@ -93,7 +93,8 @@ CALL_RDXN_OPS_ALL_TG(int64, int64_t)
         j = 0;                                                                                 \
         for (size_t num_elems = min_elems; num_elems <= max_elems; num_elems *= step_factor) { \
             if (num_elems < ELEM_COMP) {                                                       \
-                size_arr[j] = num_elems * sizeof(TYPE);                                        \
+                size_arr[j] =                                                                  \
+                    calculate_collective_size("reducescatter", num_elems, sizeof(TYPE), npes); \
             } else {                                                                           \
                 size_arr[j] = 0;                                                               \
             }                                                                                  \
@@ -152,6 +153,7 @@ int rdxn_calling_kernel(nvshmem_team_t team, void *dest, const void *source, int
     int iter = iters;
     int skip = warmup_iters;
     int j;
+    int npes = nvshmem_n_pes();
     uint64_t *size_arr = (uint64_t *)h_tables[0];
     double *h_sum_lat = (double *)h_tables[1];
     double *h_prod_lat = (double *)h_tables[2];

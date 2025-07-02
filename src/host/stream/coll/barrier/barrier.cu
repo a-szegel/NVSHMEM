@@ -40,6 +40,7 @@ int nvshmemi_call_barrier_on_stream_kernel(nvshmem_team_t team, cudaStream_t str
 int nvshmemi_call_sync_on_stream_kernel(nvshmem_team_t team, cudaStream_t stream) {
     int num_blocks = 1;
     int num_threads_per_block;
+    int in_cuda_graph = 0;
     if (nvshmemi_job_connectivity <= NVSHMEMI_JOB_GPU_LDST_REMOTE_ATOMICS) {
         int size = nvshmemi_team_pool[team]->size;
         num_threads_per_block = size - 1;  // Have enough threads for alltoall algo
@@ -47,12 +48,16 @@ int nvshmemi_call_sync_on_stream_kernel(nvshmem_team_t team, cudaStream_t stream
         num_threads_per_block = nvshmemi_options.BARRIER_TG_DISSEM_KVAL;
     }
 
+    cudaStreamCaptureStatus status;
+    CUDA_RUNTIME_CHECK(cudaStreamIsCapturing(stream, &status));
+    if (status == cudaStreamCaptureStatusActive) in_cuda_graph = 1;
+
     if (num_threads_per_block <= 32) {
         sync_on_stream_kernel_threadgroup<NVSHMEMI_THREADGROUP_WARP>
-            <<<num_blocks, 32, 0, stream>>>(team);
+            <<<num_blocks, 32, 0, stream>>>(team, in_cuda_graph);
     } else {
         sync_on_stream_kernel_threadgroup<NVSHMEMI_THREADGROUP_BLOCK>
-            <<<num_blocks, num_threads_per_block, 0, stream>>>(team);
+            <<<num_blocks, num_threads_per_block, 0, stream>>>(team, in_cuda_graph);
     }
     CUDA_RUNTIME_CHECK(cudaGetLastError());
     return 0;

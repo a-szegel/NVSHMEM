@@ -10,7 +10,7 @@
 #include <cuda_runtime.h>
 #include "device_host_transport/nvshmem_common_transport.h"  // for NVSHMEMI_OP_PUT
 #include "non_abi/nvshmem_build_options.h"
-#ifdef NVSHMEM_ENABLE_ALL_DEVICE_INLINING
+#if defined(NVSHMEM_ENABLE_ALL_DEVICE_INLINING) || defined(__NVSHMEM_NUMBA_SUPPORT__)
 #include "non_abi/device/pt-to-pt/transfer_device.cuh"
 #else
 #include "non_abi/device/pt-to-pt/nvshmemi_transfer_api.cuh"
@@ -267,15 +267,11 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_bcast_put2all_threadgroup
     nvshmem_team_t team, T *dest, const T *source, size_t nelems, int PE_root) {
     nvshmemi_team_t *teami = nvshmemi_device_state_d.team_pool[team];
     int i;
-    int PE_start = teami->start;
-    int PE_stride = teami->stride;
-    int PE_size = teami->size;
-    int stride = PE_stride;
     int root = nvshmemi_team_translate_pe(team, PE_root, NVSHMEM_TEAM_WORLD_INDEX);
-    int PE_end = PE_start + (stride * PE_size);
     if (root == nvshmemi_device_state_d.mype) {
-        for (i = PE_start; i < PE_end; i += stride) {
-            nvshmemi_put_nbi_threadgroup<T, SCOPE>(dest, source, nelems, i);
+        for (i = 0; i < teami->size; i++) {
+            int pe = nvshmemi_team_translate_pe_to_team_world_wrap(teami, i);
+            nvshmemi_put_nbi_threadgroup<T, SCOPE>(dest, source, nelems, pe);
         }
     }
     nvshmemi_barrier_threadgroup<SCOPE>(team);
@@ -284,21 +280,19 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_bcast_put2all_threadgroup
 template <typename T, threadgroup_t SCOPE>
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_bcast_put2all_direct_threadgroup(
     nvshmem_team_t team, T *dest, const T *source, size_t nelems, int PE_root) {
+    int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
     nvshmemi_team_t *teami = nvshmemi_device_state_d.team_pool[team];
     int i;
-    int PE_start = teami->start;
-    int PE_stride = teami->stride;
-    int PE_size = teami->size;
-    int stride = PE_stride;
     int root = nvshmemi_team_translate_pe(team, PE_root, NVSHMEM_TEAM_WORLD_INDEX);
-    int PE_end = PE_start + (stride * PE_size);
     T *dst_ptr;
     if (root == nvshmemi_device_state_d.mype) {
-        for (i = PE_start; i < PE_end; i += stride) {
-            dst_ptr = (T *)nvshmemi_ptr(dest, i);
+        for (i = 0; i < teami->size; i++) {
+            int pe = nvshmemi_team_translate_pe_to_team_world_wrap(teami, i);
+            dst_ptr = (T *)nvshmemi_ptr(dest, pe);
             nvshmemi_memcpy_threadgroup<SCOPE>(dst_ptr, source, nelems * sizeof(T));
         }
     }
+
     nvshmemi_barrier_threadgroup<SCOPE>(team);
 }
 

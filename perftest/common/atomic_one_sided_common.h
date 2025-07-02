@@ -132,39 +132,42 @@
         }                                                                                       \
     }
 
-#define MAIN_SETUP(c, v, mype, npes, flag_d, stream, h_size_arr, h_tables, h_lat) \
-    do {                                                                          \
-        init_wrapper(&c, &v);                                                     \
-                                                                                  \
-        if (use_cubin) {                                                          \
-            init_cumodule(CUMODULE_NAME);                                         \
-        }                                                                         \
-                                                                                  \
-        mype = nvshmem_my_pe();                                                   \
-        npes = nvshmem_n_pes();                                                   \
-                                                                                  \
-        if (npes != 2) {                                                          \
-            fprintf(stderr, "This test requires exactly two processes  \n");      \
-            finalize_wrapper();                                                   \
-            exit(-1);                                                             \
-        }                                                                         \
-                                                                                  \
-        alloc_tables(&h_tables, 2, 1);                                            \
-        h_size_arr = (uint64_t *)h_tables[0];                                     \
-        h_lat = (double *)h_tables[1];                                            \
-                                                                                  \
-        flag_d = nvshmem_malloc(sizeof(uint64_t));                                \
-        CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(uint64_t)));                      \
-                                                                                  \
-        CUDA_CHECK(cudaStreamCreate(&stream));                                    \
-                                                                                  \
-        nvshmem_barrier_all();                                                    \
-                                                                                  \
-        CUDA_CHECK(cudaDeviceSynchronize());                                      \
-                                                                                  \
-        if (mype == 0) {                                                          \
-            printf("Note: This test measures full round-trip latency\n");         \
-        }                                                                         \
+#define MAIN_SETUP(c, v, mype, npes, flag_d, stream, h_size_arr, h_tables, h_lat)      \
+    do {                                                                               \
+        init_wrapper(&c, &v);                                                          \
+                                                                                       \
+        if (use_cubin) {                                                               \
+            init_cumodule(CUMODULE_NAME);                                              \
+        }                                                                              \
+                                                                                       \
+        mype = nvshmem_my_pe();                                                        \
+        npes = nvshmem_n_pes();                                                        \
+                                                                                       \
+        if (npes != 2) {                                                               \
+            fprintf(stderr, "This test requires exactly two processes  \n");           \
+            finalize_wrapper();                                                        \
+            exit(-1);                                                                  \
+        }                                                                              \
+                                                                                       \
+        alloc_tables(&h_tables, 2, 1);                                                 \
+        h_size_arr = (uint64_t *)h_tables[0];                                          \
+        h_lat = (double *)h_tables[1];                                                 \
+        if (use_mmap) {                                                                \
+            flag_d = allocate_mmap_buffer(sizeof(uint64_t), mem_handle_type, use_egm); \
+        } else {                                                                       \
+            flag_d = nvshmem_malloc(sizeof(uint64_t));                                 \
+        }                                                                              \
+        CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(uint64_t)));                           \
+                                                                                       \
+        CUDA_CHECK(cudaStreamCreate(&stream));                                         \
+                                                                                       \
+        nvshmem_barrier_all();                                                         \
+                                                                                       \
+        CUDA_CHECK(cudaDeviceSynchronize());                                           \
+                                                                                       \
+        if (mype == 0) {                                                               \
+            printf("Note: This test measures full round-trip latency\n");              \
+        }                                                                              \
     } while (0)
 
 #define LAUNCH_KERNEL(TYPE_NAME, AMO, ARGLIST, STREAM)                                            \

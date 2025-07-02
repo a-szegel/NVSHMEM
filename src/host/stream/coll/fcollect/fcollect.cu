@@ -13,9 +13,8 @@
 #include "internal/non_abi/nvshmemi_h_to_d_coll_defs.cuh"
 #include "host/nvshmem_api.h"
 
-#define _THREADS_PER_WARP 32
 #define NVSHMEMI_FCOLLECT_CTA_THRESHOLD 1048576
-#define NVSHMEMI_FCOLLECT_CTA_COUNT_DEFAULT 4
+#define NVSHMEMI_FCOLLECT_CTA_COUNT_DEFAULT 32 /* # of GPUs x 4 CTA per GPU for DGX */
 
 std::map<std::string, size_t> nvshmemi_fcollect_maxblocksize;
 
@@ -23,21 +22,21 @@ template <typename TYPE>
 void nvshmemi_call_fcollect_on_stream_kernel(nvshmem_team_t team, TYPE *dest, const TYPE *source,
                                              size_t nelems, cudaStream_t stream) {
     int tmp;
-    size_t num_threads_by_elem;
     std::string type_str(typeid(TYPE).name());
+    int in_cuda_graph = 0;
+
     if (nvshmemi_fcollect_maxblocksize.find(type_str) == nvshmemi_fcollect_maxblocksize.end()) {
         CUDA_RUNTIME_CHECK(cudaOccupancyMaxPotentialBlockSize(
             &tmp, (int *)&nvshmemi_fcollect_maxblocksize[type_str],
             fcollect_on_stream_kernel<TYPE>));
     }
 
-    num_threads_by_elem =
-        (nelems / _THREADS_PER_WARP + (nelems % _THREADS_PER_WARP ? 1 : 0)) * _THREADS_PER_WARP;
+    cudaStreamCaptureStatus status;
+    CUDA_RUNTIME_CHECK(cudaStreamIsCapturing(stream, &status));
+    if (status == cudaStreamCaptureStatusActive) in_cuda_graph = 1;
 
     /* By default select min(occupancy, nelems) */
-    int num_threads_per_block = (nvshmemi_fcollect_maxblocksize[type_str] > num_threads_by_elem)
-                                    ? num_threads_by_elem
-                                    : nvshmemi_fcollect_maxblocksize[type_str];
+    int num_threads_per_block = nvshmemi_fcollect_maxblocksize[type_str];
 
     /* Use env to override the value */
     if (nvshmemi_options.FCOLLECT_NTHREADS_provided) {
@@ -53,7 +52,9 @@ void nvshmemi_call_fcollect_on_stream_kernel(nvshmem_team_t team, TYPE *dest, co
             nelems * teami->size * sizeof(TYPE) >= NVSHMEMI_FCOLLECT_CTA_THRESHOLD) {
             num_blocks = nvshmemi_options.MAX_CTAS;
         } else if (nelems * teami->size * sizeof(TYPE) >= NVSHMEMI_FCOLLECT_CTA_THRESHOLD) {
-            num_blocks = NVSHMEMI_FCOLLECT_CTA_COUNT_DEFAULT;
+            num_blocks = ((NVSHMEMI_FCOLLECT_CTA_COUNT_DEFAULT / teami->size) > 1
+                              ? (NVSHMEMI_FCOLLECT_CTA_COUNT_DEFAULT / teami->size)
+                              : 1);
         } else {
             num_blocks = 1;
         }
@@ -68,6 +69,11 @@ void nvshmemi_call_fcollect_on_stream_kernel(nvshmem_team_t team, TYPE *dest, co
                                        &(teami->team_dups[block_id + 1]));
             INFO(NVSHMEM_TEAM, "Duplicate team ID: %d of parent team: %d for CTA %zu\n",
                  teami->team_dups[block_id + 1], teami->team_idx, block_id);
+            if (teami->team_dups[block_id + 1] == NVSHMEM_TEAM_INVALID) {
+                NVSHMEMI_ERROR_EXIT(
+                    "Unable to allocate enough teams for fcollect. This will cause significant "
+                    "performance degradation. Please increase NVSHMEM_MAX_TEAMS. Exiting\n");
+            }
         }
 
         off_t team_dups_offset = offsetof(nvshmemi_team_t, team_dups);
@@ -82,8 +88,8 @@ void nvshmemi_call_fcollect_on_stream_kernel(nvshmem_team_t team, TYPE *dest, co
         CUDA_RUNTIME_CHECK(cudaDeviceSynchronize());
     }
 
-    fcollect_on_stream_kernel<TYPE>
-        <<<num_blocks, num_threads_per_block, 0, stream>>>(team, dest, source, nelems);
+    fcollect_on_stream_kernel<TYPE><<<num_blocks, num_threads_per_block, 0, stream>>>(
+        team, dest, source, nelems, in_cuda_graph);
     CUDA_RUNTIME_CHECK(cudaGetLastError());
 }
 

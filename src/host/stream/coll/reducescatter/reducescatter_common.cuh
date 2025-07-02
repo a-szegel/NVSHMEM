@@ -26,6 +26,8 @@ void nvshmemi_call_reducescatter_on_stream_kernel(nvshmem_team_t team, TYPE *des
                                                   cudaStream_t stream) {
     int tmp;
     std::pair<std::string, rdxn_ops_t> map_pair(std::string(typeid(TYPE).name()), OP);
+    int in_cuda_graph = 0;
+
     if (nvshmemi_reducescatter_maxblocksize.find(map_pair) ==
         nvshmemi_reducescatter_maxblocksize.end()) {
         CUDA_RUNTIME_CHECK(cudaOccupancyMaxPotentialBlockSize(
@@ -41,6 +43,10 @@ void nvshmemi_call_reducescatter_on_stream_kernel(nvshmem_team_t team, TYPE *des
     if (nvshmemi_options.REDUCESCATTER_NTHREADS_provided) {
         num_threads_per_block = nvshmemi_options.REDUCESCATTER_NTHREADS;
     }
+
+    cudaStreamCaptureStatus status;
+    CUDA_RUNTIME_CHECK(cudaStreamIsCapturing(stream, &status));
+    if (status == cudaStreamCaptureStatusActive) in_cuda_graph = 1;
 
     nvshmemi_team_t *teami = nvshmemi_team_pool[team];
     int num_blocks = 1;
@@ -79,8 +85,8 @@ void nvshmemi_call_reducescatter_on_stream_kernel(nvshmem_team_t team, TYPE *des
         CUDA_RUNTIME_CHECK(cudaDeviceSynchronize());
     }
 
-    reducescatter_on_stream_kernel<TYPE, OP>
-        <<<num_blocks, num_threads_per_block, 0, stream>>>(team, dest, source, nreduce);
+    reducescatter_on_stream_kernel<TYPE, OP><<<num_blocks, num_threads_per_block, 0, stream>>>(
+        team, dest, source, nreduce, in_cuda_graph);
     CUDA_RUNTIME_CHECK(cudaGetLastError());
 }
 

@@ -5,21 +5,21 @@
  */
 
 #include "topo.h"
-#include <ctype.h>                                                         // for tolower
-#include <cuda.h>                                                          // for CUDA_SUCCESS
-#include <cuda_runtime.h>                                                  // for cudaDevice...
-#include <driver_types.h>                                                  // for cudaDevice...
-#include <limits.h>                                                        // for PATH_MAX
-#include <stdio.h>                                                         // for NULL, fclose
-#include <stdlib.h>                                                        // for free, calloc
-#include <string.h>                                                        // for strlen
-#include <list>                                                            // for _List_iter...
-#include "non_abi/nvshmemx_error.h"                                        // for NVSHMEMX_E...
-#include "internal/host/debug.h"                                           // for INFO, NVSH...
-#include "internal/host/nvshmem_internal.h"                                // for nvshmemi_s...
-#include "internal/host/nvshmemi_mem_transport.hpp"                        // for nvshm...
-#include "internal/host/nvshmemi_types.h"                                  // for nvshmemi_state
-#include "internal/host/util.h"                                            // for getHostHash
+#include <ctype.h>                                   // for tolower
+#include <cuda.h>                                    // for CUDA_SUCCESS
+#include <cuda_runtime.h>                            // for cudaDevice...
+#include <driver_types.h>                            // for cudaDevice...
+#include <limits.h>                                  // for PATH_MAX
+#include <stdio.h>                                   // for NULL, fclose
+#include <stdlib.h>                                  // for free, calloc
+#include <string.h>                                  // for strlen
+#include <list>                                      // for _List_iter...
+#include "non_abi/nvshmemx_error.h"                  // for NVSHMEMX_E...
+#include "internal/host/debug.h"                     // for INFO, NVSH...
+#include "internal/host/nvshmem_internal.h"          // for nvshmemi_s...
+#include "internal/host/nvshmemi_mem_transport.hpp"  // for nvshm...
+#include "internal/host/nvshmemi_types.h"            // for nvshmemi_state
+#include "internal/host/util.h"                      // for nvshmemu_getHostHash
 #include "internal/bootstrap_host_transport/nvshmemi_bootstrap_defines.h"  // for bootstrap_...
 #include "internal/host_transport/cudawrap.h"                              // for CUPFN, nvs...
 #include "bootstrap_host_transport/env_defs_internal.h"                    // for nvshmemi_o...
@@ -161,7 +161,7 @@ int nvshmemi_get_devices_by_distance(int *device_arr, int max_dev_per_pe,
     int *used_devs = NULL;
 
     int mype_array_index = -1, mydev_index = -1;
-    int i, dev_id, nic_id, pe_id, pe_pair_index;
+    int i, dev_id, pe_id, pe_pair_index;
     int devices_assigned = 0;
     int mype_device_count = 0;
     int status = NVSHMEMX_ERROR_INTERNAL;
@@ -197,16 +197,16 @@ int nvshmemi_get_devices_by_distance(int *device_arr, int max_dev_per_pe,
     pe_selected_devices = (int *)calloc(n_pes_node * max_dev_per_pe, sizeof(int));
     NVSHMEMI_NULL_ERROR_JMP(pe_selected_devices, status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
                             "Unable to allocate memory for PE/NIC Mapping.\n");
-    for (nic_id = 0; nic_id < n_pes_node * max_dev_per_pe; nic_id++) {
-        pe_selected_devices[nic_id] = -1;
+    for (pe_id = 0; pe_id < n_pes_node * max_dev_per_pe; pe_id++) {
+        pe_selected_devices[pe_id] = -1;
     }
 
     pe_device_distance =
         (enum pci_distance *)calloc(n_pes_node * max_dev_per_pe, sizeof(enum pci_distance));
     NVSHMEMI_NULL_ERROR_JMP(pe_device_distance, status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
                             "Unable to allocate memory for PE/NIC Mapping.\n");
-    for (nic_id = 0; nic_id < n_pes_node * max_dev_per_pe; nic_id++) {
-        pe_device_distance[nic_id] = PATH_COUNT;
+    for (pe_id = 0; pe_id < n_pes_node * max_dev_per_pe; pe_id++) {
+        pe_device_distance[pe_id] = PATH_COUNT;
     }
 
     used_devs = (int *)calloc(ndev, sizeof(int));
@@ -254,13 +254,13 @@ int nvshmemi_get_devices_by_distance(int *device_arr, int max_dev_per_pe,
 
     /* Get path distances start */
     /* construct a n_pes_node * ndev array of distance measurements */
-    for (nic_id = 0; nic_id < n_pes_node; nic_id++) {
+    for (pe_id = 0; pe_id < n_pes_node; pe_id++) {
         for (dev_id = 0; dev_id < ndev; dev_id++) {
             enum pci_distance distance_compare;
             distance_compare =
-                get_pci_distance(cuda_device_paths[nic_id], dev_info_all[dev_id].dev_path);
+                get_pci_distance(cuda_device_paths[pe_id], dev_info_all[dev_id].dev_path);
             if (unlikely(pe_dev_pairs.empty())) {
-                pe_dev_pairs.push_front({nic_id, dev_id, distance_compare});
+                pe_dev_pairs.push_front({pe_id, dev_id, distance_compare});
             } else {
                 for (pairs_iter = pe_dev_pairs.begin(); pairs_iter != pe_dev_pairs.end();
                      pairs_iter++) {
@@ -268,10 +268,10 @@ int nvshmemi_get_devices_by_distance(int *device_arr, int max_dev_per_pe,
                         break;
                     }
                 }
-                INFO(NVSHMEM_TOPO, "PE %d: %s dev %d: %s distance: %d\n", nic_id,
-                     cuda_device_paths[nic_id], dev_id, dev_info_all[dev_id].dev_path,
+                INFO(NVSHMEM_TOPO, "PE %d: %s dev %d: %s distance: %d\n", pe_id,
+                     cuda_device_paths[pe_id], dev_id, dev_info_all[dev_id].dev_path,
                      distance_compare);
-                pe_dev_pairs.insert(pairs_iter, {nic_id, dev_id, distance_compare});
+                pe_dev_pairs.insert(pairs_iter, {pe_id, dev_id, distance_compare});
             }
         }
     }
@@ -322,44 +322,38 @@ int nvshmemi_get_devices_by_distance(int *device_arr, int max_dev_per_pe,
     }
 
     /* loop two, load balance the NICs. */
-    for (nic_id = 0; nic_id < n_pes_node * max_dev_per_pe; nic_id++) {
+    for (pe_id = 0; pe_id < n_pes_node * max_dev_per_pe; pe_id++) {
         int nic_density;
-        if (pe_selected_devices[nic_id] < 0) {
+        if (pe_selected_devices[pe_id] < 0) {
             continue;
         }
-        nic_density = used_devs[pe_selected_devices[nic_id]];
+        nic_density = used_devs[pe_selected_devices[pe_id]];
 
         /* Can't find a less populated NIC if ours is only assigned to 1 gpu. */
         if (nic_density < 2) {
             continue;
         }
 
-        /* Calculate PE Index from nic_id. Each PE gets max_dev_per_pe assigned to them.
-         * If there are 8 NIC's and 4 PE's, the nic -> PE mapping looks like
-         * nic_id:  0   1   2   3   4   5   6   7
-         * pe_idx:  0   0   1   1   2   2   3   3
-         */
-        int pe_idx = (nic_id - (nic_id % max_dev_per_pe)) / max_dev_per_pe;
         for (pairs_iter = pe_dev_pairs.begin(); pairs_iter != pe_dev_pairs.end(); pairs_iter++) {
             /* Never change for a less optimal NIC. */
 
-            if ((*pairs_iter).pe_idx != pe_idx) {
+            if ((*pairs_iter).pe_idx != pe_id) {
                 continue;
             }
 
             if (pci_distance_perf[(*pairs_iter).pcie_distance] <
-                pci_distance_perf[pe_device_distance[nic_id]]) {
+                pci_distance_perf[pe_device_distance[pe_id]]) {
                 break;
             }
 
             if ((nic_density - used_devs[(*pairs_iter).dev_idx]) >= 2) {
                 INFO(NVSHMEM_TOPO, "Re-Pairing PE %d with device %d at distance %d\n",
                      (*pairs_iter).pe_idx, (*pairs_iter).dev_idx, (*pairs_iter).pcie_distance);
-                used_devs[pe_selected_devices[nic_id]]--;
+                used_devs[pe_selected_devices[pe_id]]--;
                 used_devs[(*pairs_iter).dev_idx]++;
                 nic_density = used_devs[(*pairs_iter).dev_idx];
-                pe_selected_devices[nic_id] = (*pairs_iter).dev_idx;
-                pe_device_distance[nic_id] = (*pairs_iter).pcie_distance;
+                pe_selected_devices[pe_id] = (*pairs_iter).dev_idx;
+                pe_device_distance[pe_id] = (*pairs_iter).pcie_distance;
                 if (nic_density < 2) {
                     break;
                 }
@@ -515,7 +509,7 @@ int nvshmemi_detect_same_device(nvshmemi_state_t *state) {
     NVSHMEMI_NE_ERROR_JMP(status, CUDA_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
                           "getPcieAttrs failed \n");
 
-    my_info.hostHash = getHostHash();
+    my_info.hostHash = nvshmemu_getHostHash();
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, state->device_id);
     my_info.gpu_uuid = prop.uuid;

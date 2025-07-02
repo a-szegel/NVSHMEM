@@ -15,7 +15,7 @@
 #include "coll_test.h"
 #define DATATYPE int64_t
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 extern "C" {
 #endif
 
@@ -64,7 +64,7 @@ CALL_ALLTOALL(int64, int64_t, x, _warp, warpSize, 4096);
 CALL_ALLTOALL(int32, int32_t, x, _block, INT_MAX, INT_MAX);
 CALL_ALLTOALL(int64, int64_t, x, _block, INT_MAX, INT_MAX);
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 }
 #endif
 
@@ -74,6 +74,7 @@ int alltoall_calling_kernel(nvshmem_team_t team, void *dest, void *source, int m
     int nvshm_test_num_tpb = threads_per_block;
     int num_blocks = 1;
     size_t num_elems, min_elems, max_elems;
+    int npes = nvshmem_n_pes();
     int i;
     int skip = warmup_iters;
     int iter = iters;
@@ -133,7 +134,7 @@ int alltoall_calling_kernel(nvshmem_team_t team, void *dest, void *source, int m
 
     i = 0;
     for (num_elems = min_elems; num_elems <= max_elems; num_elems *= step_factor) {
-        h_size_array[i] = num_elems * 4;
+        h_size_array[i] = calculate_collective_size("alltoall", num_elems, sizeof(int32_t), npes);
         CALL_ALLTOALL_KERNEL(int32, _block, num_blocks, nvshm_test_num_tpb, args_1, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
 
@@ -205,7 +206,7 @@ int alltoall_calling_kernel(nvshmem_team_t team, void *dest, void *source, int m
 
     i = 0;
     for (num_elems = min_elems; num_elems <= max_elems; num_elems *= step_factor) {
-        h_size_array[i] = num_elems * 8;
+        h_size_array[i] = calculate_collective_size("alltoall", num_elems, sizeof(int64_t), npes);
         CALL_ALLTOALL_KERNEL(int64, _block, num_blocks, nvshm_test_num_tpb, args_1, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
 
@@ -283,9 +284,15 @@ int main(int argc, char **argv) {
     h_source = (DATATYPE *)h_buffer;
     h_dest = (DATATYPE *)&h_source[max_size / sizeof(DATATYPE)];
 
-    d_buffer = (DATATYPE *)nvshmem_malloc(alloc_size);
+    if (use_mmap) {
+        d_buffer = (DATATYPE *)allocate_mmap_buffer(alloc_size, mem_handle_type, use_egm);
+        DEBUG_PRINT("Allocated mmap buffer\n");
+    } else {
+        d_buffer = (DATATYPE *)nvshmem_malloc(alloc_size);
+        DEBUG_PRINT("Allocated nvshmem malloc buffer\n");
+    }
     if (!d_buffer) {
-        fprintf(stderr, "nvshmem_malloc failed \n");
+        fprintf(stderr, "buffer allocation failed \n");
         status = -1;
         goto out;
     }
@@ -305,7 +312,11 @@ int main(int argc, char **argv) {
     nvshmem_barrier_all();
 
     CUDA_CHECK(cudaFreeHost(h_buffer));
-    nvshmem_free(d_buffer);
+    if (use_mmap) {
+        free_mmap_buffer(d_buffer);
+    } else {
+        nvshmem_free(d_buffer);
+    }
 
     CUDA_CHECK(cudaStreamDestroy(cstrm));
     free_tables(h_tables, 4);

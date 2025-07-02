@@ -3,6 +3,11 @@
 
 #include "device_host/nvshmem_common.cuh"
 #include <cuda_runtime.h>
+#if !defined __CUDACC_RTC__
+#include <assert.h>
+#else
+#include <cuda/std/cassert>
+#endif
 
 #ifdef __CUDA_ARCH__
 
@@ -69,14 +74,34 @@ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE __device__ size_t get_psync_len_pe
             fcollect_ll128_sync_size);
 }
 
-__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE int nvshmemi_pe_in_active_set(
-    int global_pe, int PE_start, int PE_stride, int PE_size) {
-    int n = (global_pe - PE_start) / PE_stride;
-    if (global_pe < PE_start || (global_pe - PE_start) % PE_stride || n >= PE_size)
-        return -1;
-    else {
-        return n;
+__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE int
+nvshmemi_team_translate_pe_to_team_world_wrap(nvshmemi_team_t *src_team, int src_pe) {
+    return src_team->pe_mapping[src_pe % src_team->size];
+}
+
+__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE int
+nvshmemi_team_translate_pe_from_team_world(nvshmemi_team_t *dest_team, int src_pe) {
+    return dest_team->pe_mapping[dest_team->size + src_pe];
+}
+
+__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE bool nvshmemi_team_is_identical(
+    nvshmemi_team_t *t1, nvshmemi_team_t *t2) {
+    if (t1->start != t2->start || t1->size != t2->size) {
+        return false;
     }
+
+    /* shortcut for teams with linear stride */
+    if (t1->stride > 0 && t2->stride == t1->stride) {
+        return true;
+    }
+
+    for (int i = 0; i < t1->size; i++) {
+        if (t1->pe_mapping[i] != t2->pe_mapping[i]) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE int nvshmemi_team_translate_pe(nvshmem_team_t src_team,
@@ -91,11 +116,9 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE int nvshmemi_team_translate_pe(nvshmem_
 
     if (src_pe > src_teami->size) return -1;
 
-    src_pe_world = src_teami->start + src_pe * src_teami->stride;
+    src_pe_world = src_teami->pe_mapping[src_pe];
     assert(src_pe_world >= src_teami->start && src_pe_world < nvshmemi_device_state_d.npes);
-
-    dest_pe = nvshmemi_pe_in_active_set(src_pe_world, dest_teami->start, dest_teami->stride,
-                                        dest_teami->size);
+    dest_pe = dest_teami->pe_mapping[dest_teami->size + src_pe_world];
 
     return dest_pe;
 }

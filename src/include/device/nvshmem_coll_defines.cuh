@@ -53,6 +53,13 @@ NVSHMEMI_STATIC NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_INLINE void nvshmem_sync_
     nvshmemi_sync_threadgroup<nvshmemi_threadgroup_thread>(NVSHMEM_TEAM_WORLD);
 }
 
+NVSHMEMI_STATIC NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_INLINE int nvshmem_broadcastmem(
+    nvshmem_team_t team, void *dest, const void *source, size_t nelems, int PE_root) {
+    nvshmemi_broadcast_threadgroup<char, nvshmemi_threadgroup_thread>(
+        team, (char *)dest, (const char *)source, nelems, PE_root);
+    return 0;
+}
+
 #define DEFN_NVSHMEM_TYPENAME_BROADCAST(TYPENAME, TYPE)                                        \
     NVSHMEMI_STATIC NVSHMEMI_DEVICE_PREFIX                                                     \
         NVSHMEMI_DEVICE_INLINE int nvshmem_##TYPENAME##_broadcast(                             \
@@ -64,6 +71,13 @@ NVSHMEMI_STATIC NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_INLINE void nvshmem_sync_
 
 NVSHMEMI_REPT_FOR_STANDARD_RMA_TYPES(DEFN_NVSHMEM_TYPENAME_BROADCAST)
 #undef DEFN_NVSHMEM_TYPENAME_BROADCAST
+
+NVSHMEMI_STATIC NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_INLINE int nvshmem_fcollectmem(
+    nvshmem_team_t team, void *dest, const void *source, size_t nelems) {
+    nvshmemi_fcollect_threadgroup<char, nvshmemi_threadgroup_thread>(
+        team, (char *)dest, (const char *)source, nelems * nvshmem_team_my_pe(team), nelems);
+    return 0;
+}
 
 #define DEFN_NVSHMEM_TYPENAME_FCOLLECT(TYPENAME, TYPE)                            \
     NVSHMEMI_STATIC NVSHMEMI_DEVICE_PREFIX                                        \
@@ -77,13 +91,13 @@ NVSHMEMI_REPT_FOR_STANDARD_RMA_TYPES(DEFN_NVSHMEM_TYPENAME_BROADCAST)
 NVSHMEMI_REPT_FOR_STANDARD_RMA_TYPES(DEFN_NVSHMEM_TYPENAME_FCOLLECT)
 #undef DEFN_NVSHMEM_TYPENAME_FCOLLECT
 
-#define DEFN_NVSHMEM_TYPENAME_OP_REDUCE(TYPENAME, TYPE, OP)                               \
-    NVSHMEMI_STATIC NVSHMEMI_DEVICE_PREFIX                                                \
-        NVSHMEMI_DEVICE_INLINE int nvshmem_##TYPENAME##_##OP##_reduce(                    \
-            nvshmem_team_t team, TYPE *dest, const TYPE *source, size_t nreduce) {        \
-        nvshmemi_reduce_threadgroup<TYPE, RDXN_OPS_##OP, nvshmemi_threadgroup_thread, 0>( \
-            team, dest, source, nreduce);                                                 \
-        return 0;                                                                         \
+#define DEFN_NVSHMEM_TYPENAME_OP_REDUCE(TYPENAME, TYPE, OP)                            \
+    NVSHMEMI_STATIC NVSHMEMI_DEVICE_PREFIX                                             \
+        NVSHMEMI_DEVICE_INLINE int nvshmem_##TYPENAME##_##OP##_reduce(                 \
+            nvshmem_team_t team, TYPE *dest, const TYPE *source, size_t nreduce) {     \
+        nvshmemi_reduce_threadgroup<TYPE, RDXN_OPS_##OP, nvshmemi_threadgroup_thread>( \
+            team, dest, source, nreduce);                                              \
+        return 0;                                                                      \
     }
 
 #define DEFN_NVSHMEM_REDUCE()                                                     \

@@ -69,6 +69,7 @@ static uint64_t num_initialized_device_states = 0;
 static bool nvshmemi_is_device_state_ready;
 int nvshmemi_can_use_cuda_64_bit_stream_memops = false;
 int nvshmemi_can_flush_remote_writes = false;
+int nvshmemi_is_vmm_supported = false;
 FILE *nvshmem_debug_file = stdout;
 static char shm_name[100];
 nvshmemi_version_t nvshmemi_host_lib_version = {
@@ -298,6 +299,15 @@ int nvshmemx_set_attr_uniqueid_args(const int myrank, const int nranks,
     return (0);
 }
 
+// Set mpi_comm arg
+int nvshmemx_set_attr_mpi_comm_args(void *mpi_comm, nvshmemx_init_attr_t *nvshmem_attr) {
+    if (nvshmem_attr == NULL) {
+        return -1;
+    }
+    nvshmem_attr->mpi_comm = mpi_comm;
+    return (0);
+}
+
 nvshmemx_uniqueid_args_t *nvshmemi_get_attr_uniqueid_args(nvshmemx_init_attr_t *attr) {
     assert(attr != NULL);
     nvshmemx_init_args_t *init_args = (nvshmemx_init_args_t *)(&(attr->args));
@@ -334,7 +344,7 @@ int nvshmemi_bootstrap(int flags, nvshmemx_init_attr_t *nvshmem_attr) {
 
     mype = nvshmemi_boot_handle.pg_rank;
     npes = nvshmemi_boot_handle.pg_size;
-    myHostHash = getHostHash();
+    myHostHash = nvshmemu_getHostHash();
     hostHash = (uint64_t *)malloc(sizeof(uint64_t) * npes);
     status = nvshmemi_boot_handle.allgather((void *)&myHostHash, (void *)hostHash, sizeof(uint64_t),
                                             &nvshmemi_boot_handle);
@@ -427,7 +437,6 @@ int nvshmemi_init_nvshmemi_state(nvshmemi_state_t *state) {
     state->npes_node = nvshmemi_boot_handle.npes_node;
     state->is_platform_nvl = true;
     state->are_nics_ll128_compliant = true;
-
     return status;
 }
 
@@ -440,7 +449,7 @@ static void nvshmemi_detect_nvls_support(nvshmemi_state_t *state) {
     CUDA_RUNTIME_CHECK(cudaGetDevice(&cuda_dev));
     status = CUPFN(nvshmemi_cuda_syms, cuDeviceGet(&current_dev, cuda_dev));
     if (status != CUDA_SUCCESS) {
-        WARN("cuDeviceGet failed\n");
+        WARN("NVLS: cuDeviceGet failed\n");
         return;
     }
 
@@ -450,18 +459,18 @@ static void nvshmemi_detect_nvls_support(nvshmemi_state_t *state) {
             &mc_support, static_cast<CUdevice_attribute>(CU_DEVICE_ATTRIBUTE_MULTICAST_SUPPORTED),
             current_dev));
     if (status != CUDA_SUCCESS) {
-        WARN("cuDeviceGetAttribute failed\n");
+        WARN("NVLS: cuDeviceGetAttribute failed\n");
         return;
     }
 
     if (!mc_support || nvshmemi_options.DISABLE_NVLS) {
-        INFO(NVSHMEM_INIT, "cuMulticast is not supported on CUDA or disabled by user\n");
+        INFO(NVSHMEM_INIT, "NVLS: cuMulticast is not supported on CUDA or disabled by user\n");
         return;
     }
 
     if (state->heap_obj != nullptr &&
         dynamic_cast<nvshmemi_symmetric_heap_vidmem_dynamic_vmm *>(state->heap_obj) == nullptr) {
-        WARN("Unsupported heap kind for NVLS. Supported are: cuMemCreate\n");
+        WARN("NVLS: Unsupported heap kind for NVLS. Supported are: cuMemCreate\n");
         return;
     }
 
@@ -473,6 +482,7 @@ static void nvshmemi_detect_nvls_support(nvshmemi_state_t *state) {
         CUASSERTAPIAVAILABLE(nvshmemi_cuda_syms, cuMulticastGetGranularity);
         CUASSERTAPIAVAILABLE(nvshmemi_cuda_syms, cuMulticastAddDevice);
         state->is_platform_nvls = true;
+        INFO(NVSHMEM_INIT, "NVLS: supported");
     }
 
     return;
@@ -517,6 +527,11 @@ int nvshmemi_get_cucontext(nvshmemi_state_t *state) {
             CUCHECK(nvshmemi_cuda_syms, cuCtxGetFlags(&flags));
             CUCHECK(nvshmemi_cuda_syms, cuCtxSetFlags(flags | CU_CTX_SYNC_MEMOPS));
         }
+
+        if (nvshmemi_cuda_driver_version >= 12000) {
+            CUASSERTAPIAVAILABLE(nvshmemi_cuda_syms, cuLibraryGetGlobal);
+        }
+
         status = NVSHMEMX_SUCCESS;
 
         // identify device id
@@ -688,7 +703,7 @@ static bool get_mps_server_active_thread_percentage(float *percentage) {
     std::stringstream cmd;
     int serverPID;
     /* one PE per node queries the control daemon */
-    if (nvshmemi_state->mype == nvshmemi_team_node.start) {
+    if (nvshmemi_state->mype == nvshmemi_team_node->start) {
         if (!mpsServerRunning(&serverPID)) {
             return false;
         }
@@ -725,7 +740,7 @@ static bool get_mps_server_active_thread_percentage(float *percentage) {
                                             &nvshmemi_boot_handle);
 
     if (percentage) {
-        *percentage = scratch[nvshmemi_team_node.start];
+        *percentage = scratch[nvshmemi_team_node->start];
     }
 
     free(scratch);
@@ -736,14 +751,14 @@ static bool get_mps_server_active_thread_percentage(float *percentage) {
 static int nvshmemi_determine_mpg_support_level() {
     int status = 0;
     bool is_mps_server_running = false;
-    if (nvshmemi_state->mype == nvshmemi_team_node.start) {
+    if (nvshmemi_state->mype == nvshmemi_team_node->start) {
         is_mps_server_running = mpsServerRunning(NULL);
     }
     bool *scratch = (bool *)malloc(sizeof(bool) * nvshmemi_state->npes);
     /* for lack of a better available bootstrap collective, using allagther */
     status = nvshmemi_boot_handle.allgather((void *)&is_mps_server_running, (void *)scratch,
                                             sizeof(bool), &nvshmemi_boot_handle);
-    is_mps_server_running = scratch[nvshmemi_team_node.start];
+    is_mps_server_running = scratch[nvshmemi_team_node->start];
     free(scratch);
 
     if (!is_mps_server_running) {
@@ -766,9 +781,10 @@ static int nvshmemi_determine_mpg_support_level() {
                                                 (void *)active_percentages, sizeof(float),
                                                 &nvshmemi_boot_handle);
         float total_percentage = 0;
-        for (int i = 0; i < nvshmemi_team_same_gpu.size; i += 1) {
-            total_percentage += *((float *)active_percentages + nvshmemi_team_same_gpu.start +
-                                  i * nvshmemi_team_same_gpu.stride);
+        for (int i = 0; i < nvshmemi_team_same_gpu->size; i += 1) {
+            total_percentage +=
+                *((float *)active_percentages +
+                  nvshmemi_team_translate_pe_to_team_world_wrap(nvshmemi_team_same_gpu, i));
         }
         if (total_percentage <= 100.0 ||
             nvshmemi_options.IGNORE_CUDA_MPS_ACTIVE_THREAD_PERCENTAGE) {
@@ -800,42 +816,42 @@ static int nvshmemi_setup_limited_mpg_support() {
 
     /* Ensure supported MPS runs */
     /* Do reduction to check to that each GPU has same stride and size for team_same_gpu */
-    int ret = snprintf(shm_name, 100, "mps_shm_%d", nvshmemi_team_same_gpu.start);
+    int ret = snprintf(shm_name, 100, "mps_shm_%d", nvshmemi_team_same_gpu->start);
     if (ret < 0) {
         INFO(NVSHMEM_INIT, "snprintf failed");
         return ret;
     }
 
-    if (nvshmemi_team_same_gpu.start == nvshmemi_state->mype) {
+    if (nvshmemi_team_same_gpu->start == nvshmemi_state->mype) {
         if (shared_memory_create(shm_name, sizeof(nvshmemi_mps_shmdata), info) != 0) {
             NVSHMEMI_ERROR_EXIT("Failed to create shared memory slab\n");
         }
     }
     status = nvshmemi_boot_handle.barrier(&nvshmemi_boot_handle);
-    if (nvshmemi_team_same_gpu.start != nvshmemi_state->mype) {
+    if (nvshmemi_team_same_gpu->start != nvshmemi_state->mype) {
         if (shared_memory_open(shm_name, sizeof(nvshmemi_mps_shmdata), info) != 0) {
             NVSHMEMI_ERROR_EXIT("Failed to open shared memory slab\n");
         }
     }
 
     shm = (nvshmemi_mps_shmdata *)info->addr;
-    if (nvshmemi_team_same_gpu.start == nvshmemi_state->mype) {
-        shm->nprocesses = nvshmemi_team_same_gpu.size;
+    if (nvshmemi_team_same_gpu->start == nvshmemi_state->mype) {
+        shm->nprocesses = nvshmemi_team_same_gpu->size;
         shm->barrier = 0;
         shm->sense = 0;
     }
     CUDA_RUNTIME_CHECK(cudaEventCreate(&nvshmemi_state->mps_event,
                                        cudaEventDisableTiming | cudaEventInterprocess));
     CUDA_RUNTIME_CHECK(cudaIpcGetEventHandle(
-        (cudaIpcEventHandle_t *)&shm->event_handle[nvshmemi_team_same_gpu.my_pe],
+        (cudaIpcEventHandle_t *)&shm->event_handle[nvshmemi_team_same_gpu->my_pe],
         nvshmemi_state->mps_event));
 
     std::atomic_thread_fence(std::memory_order_seq_cst);  // flush the data
     status = nvshmemi_boot_handle.barrier(&nvshmemi_boot_handle);
     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "bootstrap barrier failed \n");
 
-    for (int i = 0; i < nvshmemi_team_same_gpu.size; i++) {
-        if (i == nvshmemi_team_same_gpu.my_pe) continue;
+    for (int i = 0; i < nvshmemi_team_same_gpu->size; i++) {
+        if (i == nvshmemi_team_same_gpu->my_pe) continue;
         CUDA_RUNTIME_CHECK(
             cudaIpcOpenEventHandle(&event, *(cudaIpcEventHandle_t *)&shm->event_handle[i]));
         nvshmemi_state->same_gpu_other_pe_mps_events[counter++] = event;
@@ -854,6 +870,7 @@ static int nvshmemi_mpg_finalize() {
 
 static void nvshmemi_query_cuda_attributes() {
     int status = 0;
+    int gdrdma_vmm = false, vmm_support = false;
     CUdevice device;
     status = CUPFN(nvshmemi_cuda_syms, cuCtxGetDevice)(&device);
     if (status != CUDA_SUCCESS) {
@@ -876,6 +893,24 @@ static void nvshmemi_query_cuda_attributes() {
         nvshmemi_can_flush_remote_writes = false;
         CUDA_RUNTIME_CHECK(cudaGetLastError());
     }
+
+    status = CUPFN(nvshmemi_cuda_syms, cuDeviceGetAttribute)(
+        &vmm_support, (CUdevice_attribute)CU_DEVICE_ATTRIBUTE_VIRTUAL_MEMORY_MANAGEMENT_SUPPORTED,
+        device);
+    if (status != CUDA_SUCCESS) {
+        vmm_support = false;
+        CUDA_RUNTIME_CHECK(cudaGetLastError());
+    }
+
+    status = CUPFN(nvshmemi_cuda_syms, cuDeviceGetAttribute)(
+        &gdrdma_vmm,
+        (CUdevice_attribute)CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED, device);
+    if (status != CUDA_SUCCESS) {
+        gdrdma_vmm = false;
+        CUDA_RUNTIME_CHECK(cudaGetLastError());
+    }
+
+    nvshmemi_is_vmm_supported = gdrdma_vmm && vmm_support;
 }
 
 int nvshmemi_common_init(nvshmemi_state_t *state) {
@@ -934,17 +969,19 @@ int nvshmemi_common_init(nvshmemi_state_t *state) {
                  "Rail optimization not supported for symmetric heap in device memory");
         }
     }
-    if (nvshmemi_cuda_driver_version >= 11030 && nvshmemi_options.DISABLE_CUDA_VMM == 0 &&
-        nvshmemi_device_state.symmetric_heap_kind == NVSHMEMI_HEAP_KIND_VIDMEM) {
-        nvshmemi_use_cuda_vmm = 1;
-    } else {
-        nvshmemi_use_cuda_vmm = 0;
-    }
-
     status = nvshmemi_get_cucontext(state);
     NZ_DEBUG_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "nvshmem get cucontext failed \n");
 
     nvshmemi_query_cuda_attributes();
+
+    if (nvshmemi_options.DISABLE_CUDA_VMM == 0 && nvshmemi_is_vmm_supported &&
+        nvshmemi_device_state.symmetric_heap_kind == NVSHMEMI_HEAP_KIND_VIDMEM) {
+        nvshmemi_use_cuda_vmm = 1;
+    } else {
+        INFO(NVSHMEM_INIT,
+             "CUDA or user has disabled support for CUDA VMM. Falling back to cudaMalloc\n");
+        nvshmemi_use_cuda_vmm = 0;
+    }
 
     if (nvshmemi_use_cuda_vmm &&
         nvshmemi_cuda_driver_version < 12050) {  // stream mem ops could not be used with VMM memory
@@ -1662,39 +1699,90 @@ out:
     return status;
 }
 
-int nvshmemx_cumodule_init(CUmodule module) {
+static int nvshmemi_cuobject_init_common(CUdeviceptr lib_dptr, size_t lib_size,
+                                         CUdeviceptr state_dptr, CUdeviceptr transport_dptr) {
     int status = 0;
-    CUdeviceptr dptr, transport_dptr = 0;
-    size_t size;
-    nvshmemi_version_t module_nvshmem_version;
 
-    CUCHECKGOTO(nvshmemi_cuda_syms,
-                cuModuleGetGlobal(&dptr, &size, module, "nvshmemi_device_lib_version_d"), status,
-                out);
-    CUDA_RUNTIME_CHECK(cudaMemcpy((void *)&module_nvshmem_version, (const void *)dptr, size,
-                                  cudaMemcpyDeviceToHost));
-    if (nvshmemi_is_version_compatible(nvshmemi_host_lib_version, module_nvshmem_version) != 0) {
-        printf("NVSHMEM version in CUmodule does not match with NVSHMEM host library version\n");
-        return 1;
+    nvshmemi_version_t module_nvshmem_version;
+    if (!nvshmemi_device_state.nvshmemi_is_nvshmem_initialized) {
+        NVSHMEMI_ERROR_PRINT(
+            "NVSHMEM is not initialized. Unable to initialize cumodule. Please call some variant "
+            "of nvshmem_init() before calling this function.\n");
+        return NVSHMEMX_ERROR_INVALID_VALUE;
     }
 
-    CUCHECKGOTO(nvshmemi_cuda_syms,
-                cuModuleGetGlobal(&dptr, &size, module, "nvshmemi_device_state_d"), status, out);
-#ifdef NVSHMEM_IBGDA_SUPPORT
-    CUCHECKIGNORE(nvshmemi_cuda_syms, cuModuleGetGlobal(&transport_dptr, &size, module,
-                                                        "nvshmemi_ibgda_device_state_d"));
-#endif
-    status = register_state_ptr((void *)dptr, (void *)transport_dptr);
+    CUDA_RUNTIME_CHECK(cudaMemcpy((void *)&module_nvshmem_version, (const void *)lib_dptr, lib_size,
+                                  cudaMemcpyDeviceToHost));
+
+    if (nvshmemi_is_version_compatible(nvshmemi_host_lib_version, module_nvshmem_version) != 0) {
+        printf(
+            "NVSHMEM version in CUmodule or CUlibrary does not match with NVSHMEM host library "
+            "version\n");
+        return NVSHMEMX_ERROR_INTERNAL;
+    }
+
+    status = register_state_ptr((void *)state_dptr, (void *)transport_dptr);
     NVSHMEMI_NE_ERROR_JMP(status, NVSHMEMX_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
-                          "Unable to register cumodule state pointer. failed\n");
+                          "Unable to register module/library state pointer. failed\n");
 
     status = nvshmemi_update_device_state();
     NVSHMEMI_NE_ERROR_JMP(status, NVSHMEMX_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
-                          "Unable to update cumodule state pointer. failed\n");
+                          "Unable to update module/library state pointer. failed\n");
 
     status = cudaDeviceSynchronize();
     NVSHMEMI_NE_ERROR_JMP(status, CUDA_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
                           "cudaMemcpyFromSymbol failed\n");
+out:
+    return status;
+}
+
+int nvshmemx_culibrary_init(CUlibrary library) {
+    int status = 0;
+    CUdeviceptr lib_dptr, state_dptr, __attribute__((unused)) transport_dptr = 0;
+    size_t lib_size, state_size, __attribute__((unused)) transport_size;
+
+    CUCHECKGOTO(nvshmemi_cuda_syms,
+                cuLibraryGetGlobal(&lib_dptr, &lib_size, library, "nvshmemi_device_lib_version_d"),
+                status, out);
+
+    CUCHECKGOTO(nvshmemi_cuda_syms,
+                cuLibraryGetGlobal(&state_dptr, &state_size, library, "nvshmemi_device_state_d"),
+                status, out);
+
+#ifdef NVSHMEM_IBGDA_SUPPORT
+    CUCHECKIGNORE_NO_PRINT(nvshmemi_cuda_syms,
+                           cuLibraryGetGlobal(&transport_dptr, &transport_size, library,
+                                              "nvshmemi_ibgda_device_state_d"));
+#endif
+
+    status = nvshmemi_cuobject_init_common(lib_dptr, lib_size, state_dptr, transport_dptr);
+    NVSHMEMI_NE_ERROR_JMP(status, NVSHMEMX_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
+                          "Unable to initialize device state internal structures\n");
+out:
+    return status;
+}
+
+int nvshmemx_cumodule_init(CUmodule module) {
+    int status = 0;
+    CUdeviceptr lib_dptr, state_dptr, __attribute__((unused)) transport_dptr = 0;
+    size_t lib_size, state_size, __attribute__((unused)) transport_size;
+
+    CUCHECKGOTO(nvshmemi_cuda_syms,
+                cuModuleGetGlobal(&lib_dptr, &lib_size, module, "nvshmemi_device_lib_version_d"),
+                status, out);
+    CUCHECKGOTO(nvshmemi_cuda_syms,
+                cuModuleGetGlobal(&state_dptr, &state_size, module, "nvshmemi_device_state_d"),
+                status, out);
+
+#ifdef NVSHMEM_IBGDA_SUPPORT
+    CUCHECKIGNORE_NO_PRINT(nvshmemi_cuda_syms,
+                           cuModuleGetGlobal(&transport_dptr, &transport_size, module,
+                                             "nvshmemi_ibgda_device_state_d"));
+#endif
+
+    status = nvshmemi_cuobject_init_common(lib_dptr, lib_size, state_dptr, transport_dptr);
+    NVSHMEMI_NE_ERROR_JMP(status, NVSHMEMX_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
+                          "Unable to initialize device state internal structures\n");
 out:
     return status;
 }
@@ -1707,13 +1795,32 @@ int nvshmemx_cumodule_finalize(CUmodule module) {
     CUCHECKGOTO(nvshmemi_cuda_syms,
                 cuModuleGetGlobal(&dptr, &size, module, "nvshmemi_device_state_d"), status, out);
 #ifdef NVSHMEM_IBGDA_SUPPORT
-    CUCHECKIGNORE(nvshmemi_cuda_syms, cuModuleGetGlobal(&transport_dptr, &size, module,
-                                                        "nvshmemi_ibgda_device_state_d"));
+    CUCHECKIGNORE_NO_PRINT(nvshmemi_cuda_syms, cuModuleGetGlobal(&transport_dptr, &size, module,
+                                                                 "nvshmemi_ibgda_device_state_d"));
 #endif
     status = unregister_state_ptr((void *)dptr, (void *)transport_dptr);
     NVSHMEMI_NE_ERROR_JMP(status, NVSHMEMX_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
-                          "Unable to unregister cumodule state pointer. failed\n");
+                          "Unable to unregister cumodule/culibrary state pointer. failed\n");
 
+out:
+    return status;
+}
+
+int nvshmemx_culibrary_finalize(CUlibrary library) {
+    int status = 0;
+    CUdeviceptr dptr, transport_dptr = 0;
+    size_t size;
+
+    CUCHECKGOTO(nvshmemi_cuda_syms,
+                cuLibraryGetGlobal(&dptr, &size, library, "nvshmemi_device_state_d"), status, out);
+
+#ifdef NVSHMEM_IBGDA_SUPPORT
+    CUCHECKIGNORE_NO_PRINT(nvshmemi_cuda_syms, cuLibraryGetGlobal(&transport_dptr, &size, library,
+                                                                  "nvshmemi_ibgda_device_state_d"));
+#endif
+    status = unregister_state_ptr((void *)dptr, (void *)transport_dptr);
+    NVSHMEMI_NE_ERROR_JMP(status, NVSHMEMX_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
+                          "Unable to unregister cumodule/culibrary state pointer. failed\n");
 out:
     return status;
 }

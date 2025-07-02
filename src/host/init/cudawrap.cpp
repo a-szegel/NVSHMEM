@@ -58,6 +58,7 @@ static int cudaPfnFuncLoader(struct nvshmemi_cuda_fn_table *table) {
     LOAD_SYM(table, cuDeviceGet, 2000, , 0);
     LOAD_SYM(table, cuDeviceGetAttribute, 2000, , 0);
     LOAD_SYM(table, cuPointerSetAttribute, 6000, , 0);
+    LOAD_SYM(table, cuPointerGetAttribute, 4000, , 0);
     LOAD_SYM(table, cuModuleGetGlobal, 3020, _v2, 0);
     LOAD_SYM(table, cuGetErrorString, 6000, , 0);
     LOAD_SYM(table, cuGetErrorName, 6000, , 0);
@@ -73,10 +74,12 @@ static int cudaPfnFuncLoader(struct nvshmemi_cuda_fn_table *table) {
     LOAD_SYM(table, cuMemAddressReserve, 10020, , 1);
     LOAD_SYM(table, cuMemAddressFree, 10020, , 1);
     LOAD_SYM(table, cuMemGetAllocationGranularity, 10020, , 1);
+    LOAD_SYM(table, cuMemGetAllocationPropertiesFromHandle, 10020, , 1);
     LOAD_SYM(table, cuMemImportFromShareableHandle, 10020, , 1);
     LOAD_SYM(table, cuMemExportToShareableHandle, 10020, , 1);
     LOAD_SYM(table, cuMemRelease, 10020, , 1);
     LOAD_SYM(table, cuMemSetAccess, 10020, , 1);
+    LOAD_SYM(table, cuMemGetAccess, 10020, , 1);
     LOAD_SYM(table, cuMemUnmap, 10020, , 1);
     LOAD_SYM(table, cuMulticastCreate, 12010, , 1);
     LOAD_SYM(table, cuMulticastAddDevice, 12010, , 1);
@@ -85,6 +88,8 @@ static int cudaPfnFuncLoader(struct nvshmemi_cuda_fn_table *table) {
     LOAD_SYM(table, cuMulticastGetGranularity, 12010, , 1);
     LOAD_SYM(table, cuStreamWriteValue64, 11070, _v2, 1);
     LOAD_SYM(table, cuStreamWaitValue64, 11070, _v2, 1);
+    LOAD_SYM(table, cuMemRetainAllocationHandle, 11000, , 1);
+    LOAD_SYM(table, cuLibraryGetGlobal, 12000, , 1);
     return NVSHMEMI_SUCCESS;
 }
 

@@ -1,0 +1,1029 @@
+*   e91f4bd5 |||| 2025-06-11T22:32:32-07:00 |||| Merge branch 'release/3_3_9' into 'main'
+|\  
+| *   2908e2c3 |||| 2025-06-11T22:28:01-07:00 |||| Merge branch 'main' into 'release/3_3_9'
+| |\  
+| |/  
+|/|   
+* |   e4cdbe21 |||| 2025-06-04T18:15:02-07:00 |||| Merge branch 'release/3_3_8' into 'main'
+|\ \  
+| * | 9f7ff36f |||| 2025-06-04T18:10:45-07:00 |||| NVSHMEM 3.3.8
+| | * deda59c4 |||| 2025-06-11T22:26:39-07:00 |||| NVSHMEM 3.3.9
+| | *   83dfbd8e |||| 2025-06-11T22:23:53-07:00 |||| Merge branch 'sethh/3_3_9_bug_fixes' into 'devel'
+| | |\  
+| | | * a215caff |||| 2025-06-11T22:23:53-07:00 |||| NVSHMEM: Multiple Bug fixes for 3.3.9
+| | |/  
+| | *   5674fd88 |||| 2025-06-11T01:47:21-07:00 |||| Merge branch 'kpunniyamurt/fabInfo_fix' into 'devel'
+| | |\  
+| | | * 0d3b5e69 |||| 2025-06-11T01:47:21-07:00 |||| [Bug fix] Fabric detection fix
+| | |/  
+| | *   7e8dae2a |||| 2025-06-10T13:31:27-07:00 |||| Merge branch 'sethh/mpg_team_fix' into 'devel'
+| | |\  
+| | | * e9b4e5b7 |||| 2025-06-10T13:31:26-07:00 |||| team: Fix null pointer dereference in mpg case.
+| | |/  
+| | *   2cb50919 |||| 2025-06-10T08:02:28-07:00 |||| Merge branch 'benjaming/init_status' into 'devel'
+| | |\  
+| | | * dbbf5d72 |||| 2025-06-10T08:02:28-07:00 |||| [NVSHMEM4Py] Minor requests from NVMath-Python about querying/init
+| | |/  
+| | *   4d3984c6 |||| 2025-06-10T08:00:07-07:00 |||| Merge branch 'arnavg/nvshmem/improve-torch-interop' into 'devel'
+| | |\  
+| | | * 41748f49 |||| 2025-06-10T08:00:06-07:00 |||| Enhance triton comms kernel example
+| | |/  
+| | *   e91b4085 |||| 2025-06-09T15:03:30-07:00 |||| Merge branch 'vkhodel/draco-fix' into 'devel'
+| | |\  
+| | | * a5631eb2 |||| 2025-06-09T15:03:30-07:00 |||| fix test path typo
+| | |/  
+| | *   9bdf96c8 |||| 2025-06-07T12:31:40-07:00 |||| Merge branch 'benjaming/triton-interop-examples' into 'devel'
+| | |\  
+| | | * 4945c617 |||| 2025-06-07T12:31:39-07:00 |||| [NVSHMEM4Py] Add example of custom comms kernels expressed in Triton interoperating with NVSHMEM4Py
+| | * |   bfc20428 |||| 2025-06-06T22:59:11-07:00 |||| Merge branch 'benjaming/nvshmem-docs-updates' into 'devel'
+| | |\ \  
+| | | |/  
+| | |/|   
+| | | * 1bf3e392 |||| 2025-06-06T22:59:11-07:00 |||| [NVSHMEM4Py] Make changes in nvshmem4py that make the docs render correctly
+| | |/  
+| | *   4dc3ec75 |||| 2025-06-06T14:43:58-07:00 |||| Merge branch 'joeys_branch' into 'devel'
+| | |\  
+| | | * b5ec74f7 |||| 2025-06-06T14:43:58-07:00 |||| Fix https://nvbugs/5322995 [NVSHMEM 3.3.5-0][GB200] On GB200 gb47 cluster, GPU...
+| | |/  
+| |/|   
+| | * bce648b0 |||| 2025-06-05T10:40:46-07:00 |||| Merge branch 'benjaming/tweak-regex-to-find-python-versions' into 'devel'
+| |/| 
+| | * 995f21be |||| 2025-06-05T10:40:45-07:00 |||| [NVSHMEM4Py][B 5320013] Tweak regex that we use to match Python versions
+| |/  
+| *   7fb519f8 |||| 2025-06-04T16:47:56-07:00 |||| Merge branch 'release/3_3_8_bug_fixes' into 'devel'
+| |\  
+| | * 0a3994e6 |||| 2025-06-04T16:47:56-07:00 |||| Multiple bug fixes for version 3.3.
+| |/  
+| *   c8d723ef |||| 2025-06-04T14:22:01-07:00 |||| Merge branch 'benjaming/init-examples' into 'devel'
+| |\  
+| | * ee74726d |||| 2025-06-04T14:22:01-07:00 |||| [NVSHMEM4Py] Add examples of initialization methods, and add an interoperability example with `torchrun` and `triton` kernels
+| |/  
+| *   5120f40e |||| 2025-05-29T02:41:56-07:00 |||| Merge branch 'kpunniyamurt/cuda_13_bug_fix' into 'devel'
+| |\  
+| | * a9f919bd |||| 2025-05-29T02:41:56-07:00 |||| [Bug fix] cuda 13 compilation issues
+| |/  
+| *   e7504ee9 |||| 2025-05-28T23:18:46-07:00 |||| Merge branch 'benjaming/many-python-versions' into 'devel'
+| |\  
+| | * d181573b |||| 2025-05-28T23:18:46-07:00 |||| [NVSHMEM4Py][Kitmaker] Build Python wheels against all compatible Python versions we find on the system
+| * |   6e740b37 |||| 2025-05-28T23:18:14-07:00 |||| Merge branch 'benjaming/clone-fail-graceful' into 'devel'
+| |\ \  
+| | |/  
+| |/|   
+| | * e8c47170 |||| 2025-05-28T23:18:14-07:00 |||| [CMAKE] When CyBind is not available, print a warning and continue instead of erroring out
+| |/  
+| *   5ee36abd |||| 2025-05-28T01:46:45-07:00 |||| Merge branch 'kpunniyamurt/5280330_fix' into 'devel'
+| |\  
+| | * 4a470a11 |||| 2025-05-28T01:46:45-07:00 |||| [Bug Fix] Fixing mmap_unmap_loop test compilation issue
+| |/  
+| *   9e91d083 |||| 2025-05-27T22:38:28-07:00 |||| Merge branch 'benjaming/ctypes-import' into 'devel'
+| |\  
+| | * 689f0ac6 |||| 2025-05-27T22:38:28-07:00 |||| [NVSHMEM4Py] Misc. tweaks to make PyTorch support truly optional
+| |/  
+| *   51a357e2 |||| 2025-05-27T21:27:57-07:00 |||| Merge branch 'benjaming/5289834' into 'devel'
+| |\  
+| | * 8e48062d |||| 2025-05-27T21:27:57-07:00 |||| [B] 5289834 ARB [NVSHMEM] unit/host/bootstrap/bootstrap_coll failed when NVSHMEM_BOOTSTRAP=MPI
+| |/  
+| *   411c5156 |||| 2025-05-27T08:19:38-07:00 |||| Merge branch 'merge_back_to_devel' into 'devel'
+| |\  
+| | * d46749c1 |||| 2025-05-27T03:48:26-07:00 |||| Bump version
+| |/  
+|/|   
+* |   b097e274 |||| 2025-05-25T20:36:46-07:00 |||| Merge branch 'release_3_3_5' into 'main'
+|\ \  
+| * | 717e1aea |||| 2025-05-25T22:24:53+00:00 |||| dummy commit
+| * | 11af9acd |||| 2025-05-25T22:24:45+00:00 |||| dummy commit
+| |/  
+| *   3986b1ef |||| 2025-05-23T13:19:19-07:00 |||| Merge branch 'alanger/pr/fix_reduce_ring_example' into 'devel'
+| |\  
+| | * 4ca428ae |||| 2025-05-23T13:19:18-07:00 |||| Fix reduce calculation in collective launch example
+| |/  
+| *   bc505887 |||| 2025-05-23T12:01:36-07:00 |||| Merge branch 'arnavg/nvshmem/host-clang-compilation' into 'devel'
+| |\  
+| | * 72d4a779 |||| 2025-05-23T12:01:36-07:00 |||| Add CUDA_ARCH check to bypass host-clang compilation change
+| |/  
+| *   3ddf177a |||| 2025-05-23T11:39:05-07:00 |||| Merge branch 'abaran/bugfix_5275046' into 'devel'
+| |\  
+| | * 04d5f9f9 |||| 2025-05-23T11:39:04-07:00 |||| [Bug Fix] NVBUG 5275046: CUDA 13 does not support compute capability 7.0 (Volta)
+| |/  
+| *   ca4266d5 |||| 2025-05-22T21:14:31-07:00 |||| Merge branch 'kpunniyamurt/max_team_bug_fix' into 'devel'
+| |\  
+| | * 110b9a5d |||| 2025-05-22T21:14:31-07:00 |||| [Bug fix] Fixing MAX_TEAM issue in Tile API test
+| |/  
+| *   08bd4577 |||| 2025-05-22T21:05:11-07:00 |||| Merge branch 'kpunniyamurt/old_cuda_compilation_fix' into 'devel'
+| |\  
+| | * e6cb9575 |||| 2025-05-22T21:05:10-07:00 |||| [Bug fix] Old CUDA compilation bug fix
+| |/  
+| *   94405ed2 |||| 2025-05-22T20:34:01-07:00 |||| Merge branch 'kpunniyamurt/team_config_initializer_fix' into 'devel'
+| |\  
+| | * 2e051791 |||| 2025-05-22T20:34:00-07:00 |||| [Bug fix] bug fix for team config init issue
+| |/  
+| *   958d9b3c |||| 2025-05-19T21:00:21-07:00 |||| Merge branch 'merge_back_to_devel' into 'devel'
+| |\  
+| | * 08f19064 |||| 2025-05-19T21:58:07-04:00 |||| merge back to devel
+| |/  
+|/|   
+* |   0c76a708 |||| 2025-05-19T18:26:28-07:00 |||| Merge branch 'release_3_3_0' into 'main'
+|\ \  
+| * | ad01aab4 |||| 2025-05-19T20:48:45-04:00 |||| v 3.3.0.0
+| |/  
+| *   8984286f |||| 2025-05-19T16:11:38-07:00 |||| Merge branch 'abaran/build_fix' into 'devel'
+| |\  
+| | * f0c22117 |||| 2025-05-19T16:11:38-07:00 |||| Abaran/build fix
+| |/  
+| *   db458458 |||| 2025-05-19T14:46:00-07:00 |||| Merge branch 'alanger/pr/ce_collectives' into 'devel'
+| |\  
+| | * 2246bcaa |||| 2025-05-19T14:46:00-07:00 |||| CE based implementation for alltoall, fcollect, broadcast
+| |/  
+| *   54c1dc6b |||| 2025-05-19T12:20:12-07:00 |||| Merge branch 'benjaming/build-with-manylinux' into 'devel'
+| |\  
+| | * ba4a3a22 |||| 2025-05-19T12:20:12-07:00 |||| [NVSHMEM4Py] Build wheels with Manylinux for maximal compatibility
+| |/  
+| *   519f6e15 |||| 2025-05-16T07:56:24-07:00 |||| Merge branch 'sethh/arbitrary_team_creation_2' into 'devel'
+| |\  
+| | * 358b8102 |||| 2025-05-16T07:56:23-07:00 |||| nvshmem/team: Simplify team creation process
+| * |   5f0ecf6c |||| 2025-05-16T06:37:17-07:00 |||| Merge branch 'benjaming/kitmaker-updates' into 'devel'
+| |\ \  
+| | |/  
+| |/|   
+| | * 8237b8b4 |||| 2025-05-16T06:37:17-07:00 |||| [NVSHMEM4Py] Add some files to be more kitmaker compliant
+| * |   d065c2e0 |||| 2025-05-14T16:47:46-07:00 |||| Merge branch 'sethh/3_3_bug_fixes_2' into 'devel'
+| |\ \  
+| | |/  
+| |/|   
+| | * fcbd4e58 |||| 2025-05-14T16:47:46-07:00 |||| NVSHMEM: Multiple bug fixes for version 3.3
+| |/  
+| *   12d44f48 |||| 2025-05-14T08:57:04-07:00 |||| Merge branch 'sethh/3_3_bug_fixes_1' into 'devel'
+| |\  
+| | * c13ab52f |||| 2025-05-14T08:57:03-07:00 |||| NVSHMEM: Several Bug Fixes and Minor Improvements
+| |/  
+| *   5789ab49 |||| 2025-05-13T11:52:08-07:00 |||| Merge branch 'benjaming/fix-some-typos' into 'devel'
+| |\  
+| | * 56182757 |||| 2025-05-13T11:52:07-07:00 |||| [NVSHMEM4Py] Fix some typos that have been missed so far
+| * |   1b5ac8dc |||| 2025-05-13T02:34:16-07:00 |||| Merge branch 'kpunniyamurt/mmap_mem_dealloc_fix' into 'devel'
+| |\ \  
+| | * | 1694fb31 |||| 2025-05-13T02:34:16-07:00 |||| [Bug fix]: Fix for mem de-alloc bug
+| |/ /  
+| * |   36b82d6a |||| 2025-05-09T20:52:25-07:00 |||| Merge branch 'kpunniyamurt/mmap_bug_fix' into 'devel'
+| |\ \  
+| | |/  
+| |/|   
+| | * d103387b |||| 2025-05-09T20:52:25-07:00 |||| Kpunniyamurt/mmap bug fix
+| |/  
+| *   0979861d |||| 2025-05-07T21:42:56-07:00 |||| Merge branch 'kpunniyamurt/mmap_unmapv2' into 'devel'
+| |\  
+| | * 232c3cd6 |||| 2025-05-07T21:42:55-07:00 |||| nvshmem_mmap/unmap implementation
+| |/  
+| *   020b1ad1 |||| 2025-05-06T20:46:07-07:00 |||| Merge branch 'kpunniyamurt/tileapi' into 'devel'
+| |\  
+| | * 6100d092 |||| 2025-05-06T20:46:06-07:00 |||| Tile-granular APIs
+| |/  
+| *   e08a5de5 |||| 2025-05-06T13:43:21-07:00 |||| Merge branch 'benjaming/detect-vmm-support' into 'devel'
+| |\  
+| | * 6bbffe4c |||| 2025-05-06T13:43:21-07:00 |||| [INIT] Check if VMM allocation is supported and only use it if it is
+| |/  
+| *   14b67e16 |||| 2025-05-02T09:22:58-07:00 |||| Merge branch 'abaran/perftest_size_bugfix' into 'devel'
+| |\  
+| | * 087b979d |||| 2025-05-02T09:22:58-07:00 |||| [NVSHMEM] Element count fix for perftests
+| |/  
+| *   cb30c0d0 |||| 2025-05-01T17:51:21-07:00 |||| Merge branch 'arnavg/nvshmem/lto-nvrtc-compliant' into 'devel'
+| |\  
+| | * d2c6823f |||| 2025-05-01T17:51:21-07:00 |||| Make nvshmem.h RTC compliant as a "header-only" API
+| |/  
+| *   3ee54abe |||| 2025-05-01T10:26:34-07:00 |||| Merge branch 'vkhodel/fix-nvls' into 'devel'
+| |\  
+| | * 61ccd263 |||| 2025-05-01T10:26:34-07:00 |||| Pass node count and tasks per node to the Matrix invocation
+| |/  
+| *   2d0b4840 |||| 2025-04-30T12:13:50-07:00 |||| Merge branch 'sesu/nvbug/fix_nvshmem4py_test_environment_issues_for_CUDA11' into 'devel'
+| |\  
+| | * a904d13d |||| 2025-04-30T12:13:50-07:00 |||| Fix bug nvshmem4py test enviroment dependencies version issues for CUDA11.
+| * |   746511fb |||| 2025-04-30T12:03:12-07:00 |||| Merge branch 'benjaming/nvshemm4py-putget' into 'devel'
+| |\ \  
+| | * | 2f136467 |||| 2025-04-30T12:03:11-07:00 |||| [NVSHMEM4Py] Put/get_[signal] on stream APIs
+| |/ /  
+| * |   29a4bbbb |||| 2025-04-29T21:37:57-07:00 |||| Merge branch 'sesu/nvbugs/fix_memory_test_cupy_enabled_var' into 'devel'
+| |\ \  
+| | * | 902dc442 |||| 2025-04-29T21:37:56-07:00 |||| Set _cupy_enabled false when there is no cupy.
+| | |/  
+| * |   b5a137d8 |||| 2025-04-29T21:27:03-07:00 |||| Merge branch 'sesu/nvshmem/Enhance_args_files_to_add_cuda_graph_mode_to_perftest' into 'devel'
+| |\ \  
+| | * | 2d47d4ba |||| 2025-04-29T21:27:03-07:00 |||| Enhance perftest/host/coll/* tests args files to add cuda graph mode.
+| * | |   6ce1d74e |||| 2025-04-29T08:43:44-07:00 |||| Merge branch 'benjaming/debug-mode-get-device' into 'devel'
+| |\ \ \  
+| | |_|/  
+| |/| |   
+| | * | aaed105d |||| 2025-04-29T08:43:43-07:00 |||| [NVSHMEM4Py] Optimize out get_device in functions when debug mode is not enabled
+| |/ /  
+| * |   c1fee58c |||| 2025-04-28T19:06:31-07:00 |||| Merge branch 'benjaming/nvshem4py-perftest' into 'devel'
+| |\ \  
+| | * | 98788223 |||| 2025-04-28T19:06:31-07:00 |||| [NVSHMEM4Py] Add examples and perftests to NVSHMEM4Py
+| * | |   d4d36cbf |||| 2025-04-28T15:54:49-07:00 |||| Merge branch 'vkhodel/create-source-package-in-container' into 'devel'
+| |\ \ \  
+| | |/ /  
+| |/| |   
+| | * | 7a649c8c |||| 2025-04-28T15:54:49-07:00 |||| split source package creation  into a separate job running on the build...
+| * | |   dd9512d7 |||| 2025-04-26T15:43:41-07:00 |||| Merge branch 'sethh/CMake_updates' into 'devel'
+| |\ \ \  
+| | * | | efc53f7c |||| 2025-04-26T15:43:40-07:00 |||| CMake: Add back test build.
+| |/ / /  
+| * | |   f3f604f0 |||| 2025-04-26T13:13:51-07:00 |||| Merge branch 'sethh/cuda_13_support' into 'devel'
+| |\ \ \  
+| | * | | 607d29da |||| 2025-04-26T13:13:51-07:00 |||| CMake: Update C++ standard for CUDA 13 support
+| * | | |   2a8ace40 |||| 2025-04-26T12:59:28-07:00 |||| Merge branch 'benjaming/bytearray-2' into 'devel'
+| |\ \ \ \  
+| | |_|/ /  
+| |/| | |   
+| | * | | 25297ba1 |||| 2025-04-26T12:59:28-07:00 |||| [NVSHMEM4Py] Rename arrayview to array and array to bytearray
+| |/ / /  
+| * | |   b300ae76 |||| 2025-04-25T11:39:17-07:00 |||| Merge branch 'vkhodel/drop-test-tag-with-ipp6' into 'devel'
+| |\ \ \  
+| | * | | a611c95d |||| 2025-04-24T20:43:13-07:00 |||| remove test tag for ipp6, tests went fine
+| |/ / /  
+| * | |   71fd8ffc |||| 2025-04-24T18:57:14-07:00 |||| Merge branch 'benjaming/nvshmem4py-collectives' into 'devel'
+| |\ \ \  
+| | * | | 48736e6f |||| 2025-04-24T18:57:14-07:00 |||| [NVSHMEM4Py] Collective and Sync On-Stream Bindings and Core APIs
+| |/ / /  
+| * | |   d9a93b94 |||| 2025-04-24T09:43:39-07:00 |||| Merge branch 'abaran/bugfix_5225604' into 'devel'
+| |\ \ \  
+| | * | | 2436c28d |||| 2025-04-24T09:43:38-07:00 |||| [NVSHMEM] Fix for NVBUG 5225604
+| |/ / /  
+| * | |   9f0e11ec |||| 2025-04-23T15:12:45-07:00 |||| Merge branch 'abaran/perftest_metric_fix' into 'devel'
+| |\ \ \  
+| | * | | 4709431b |||| 2025-04-23T15:12:45-07:00 |||| [NVSHMEM] Refactor perftests to print message size and element count
+| |/ / /  
+| * | |   a121b8e3 |||| 2025-04-22T17:25:01-07:00 |||| Merge branch 'vkhodel/matrix-for-aws' into 'devel'
+| |\ \ \  
+| | * | | 962641c2 |||| 2025-04-22T17:25:01-07:00 |||| Add Matrix support for AWS
+| |/ / /  
+| * | |   479fbc42 |||| 2025-04-18T16:08:03-07:00 |||| Merge branch 'arnavg/nvshmem/allgather-aliasing' into 'devel'
+| |\ \ \  
+| | |/ /  
+| |/| |   
+| | * | 34a045e3 |||| 2025-04-18T16:08:03-07:00 |||| Avoid overlapped aliasing of sendbuf/recvbuf for bootstrap AG
+| |/ /  
+| * |   2420a8f6 |||| 2025-04-16T23:55:57-07:00 |||| Merge branch 'benjaming/misc-nvshmem-core-apis' into 'devel'
+| |\ \  
+| | * | be554f6f |||| 2025-04-16T23:55:57-07:00 |||| [NVSHMEM4Py] Miscellaneous nvshmem.core APIs and nvshmem.core.get_version(), and prepare nvshmem4py source package for OSS release
+| |/ /  
+| * |   5095f19b |||| 2025-04-15T11:54:35-07:00 |||| Merge branch 'sethh/arbitrary_team_creation' into 'devel'
+| |\ \  
+| | * | 1a7180ae |||| 2025-04-15T11:54:35-07:00 |||| team: Stop using teams start and stride in collective ops
+| |/ /  
+| * |   1dea8a5c |||| 2025-04-14T22:08:21-07:00 |||| Merge branch 'benjaming/fix-nvshmem4py-api-signature' into 'devel'
+| |\ \  
+| | * | d0cd9288 |||| 2025-04-14T22:08:20-07:00 |||| [NVSHMEM4Py] [B] 5222585 NVSHMEM4Py tests do not call nvshmem.core.init with correct API signatures
+| |/ /  
+| * |   8ec03023 |||| 2025-04-13T19:40:26-07:00 |||| Merge branch 'arnavg/nvshmem/nvls-reducescatter-half-precision' into 'devel'
+| |\ \  
+| | * | a1acd106 |||| 2025-04-13T19:40:26-07:00 |||| device/coll: Add half precision for RS
+| * | |   0e564adf |||| 2025-04-12T01:55:02-07:00 |||| Merge branch 'benjaming/nvshmem4py-mem' into 'devel'
+| |\ \ \  
+| | |/ /  
+| |/| |   
+| | * | 45401bef |||| 2025-04-12T01:55:02-07:00 |||| [NVSHMEM4Py] Memory Resources and APIs
+| |/ /  
+| * |   367a2be1 |||| 2025-04-11T14:10:50-07:00 |||| Merge branch 'kpunniyamurt/bcastmem_impl' into 'devel'
+| |\ \  
+| | * | 7739ffa6 |||| 2025-04-11T14:10:50-07:00 |||| Added bcastmem, fcollectmem implementations as specified in documentation
+| * | |   3d2a5013 |||| 2025-04-11T14:08:56-07:00 |||| Merge branch 'vkhodel/gencodes-done-right' into 'devel'
+| |\ \ \  
+| | * | | fe17bfa9 |||| 2025-04-11T14:08:55-07:00 |||| Use CUDAARCHS env var and not NVCC_GENCODE for cmake
+| |/ / /  
+| * | |   aa5c6157 |||| 2025-04-09T16:43:32-07:00 |||| Merge branch 'sethh/revert_bitcode_lib_generalization' into 'devel'
+| |\ \ \  
+| | |/ /  
+| |/| |   
+| | * | d1d5b8f7 |||| 2025-04-09T16:43:32-07:00 |||| Revert "nvshmem/llvm_bitcode_library: Generalize the bitcode library."
+| |/ /  
+| * |   386feaad |||| 2025-04-08T14:27:01-07:00 |||| Merge branch 'vkhodel/per-job-builds-dir' into 'devel'
+| |\ \  
+| | * | a63f6023 |||| 2025-04-08T14:27:01-07:00 |||| Create separate CI_BUILDS_DIRs for each test type on large clusters
+| |/ /  
+| * |   4a9b88c6 |||| 2025-04-07T13:31:43-07:00 |||| Merge branch 'benjaming/install-cuda.core' into 'devel'
+| |\ \  
+| | * | 37fb8ed3 |||| 2025-04-07T13:31:43-07:00 |||| [nvshmem4py][CI] install cuda-python
+| |/ /  
+| * |   fdbfd42b |||| 2025-04-04T10:18:25-07:00 |||| Merge branch 'sethh/bitcode_copy_fix' into 'devel'
+| |\ \  
+| | * | 58c010c8 |||| 2025-04-04T10:18:25-07:00 |||| nvshmem/llvm_bitcode_library: Fix memcpy data correctness issue.
+| * | |   8bb5f88f |||| 2025-04-04T10:17:42-07:00 |||| Merge branch 'sesu/nvbugs/5202263' into 'devel'
+| |\ \ \  
+| | * | | 9cfded7a |||| 2025-04-03T21:02:21+08:00 |||| Fix bug 5202263 and add mc_ptr case into normal single node func-test list.
+| | |/ /  
+| * | |   f17c91b7 |||| 2025-04-03T14:33:32-07:00 |||| Merge branch 'benjaming/reenable-nvshmem4py' into 'devel'
+| |\ \ \  
+| | |/ /  
+| |/| |   
+| | * | 22086da0 |||| 2025-04-03T14:33:32-07:00 |||| [CI] Re-enable nvshmem4py test
+| |/ /  
+| * |   0952bef2 |||| 2025-04-02T08:49:38-07:00 |||| Merge branch 'monah_bug4970530' into 'devel'
+| |\ \  
+| | * | 56a0ca01 |||| 2025-04-02T08:49:38-07:00 |||| Monah bug4970530
+| |/ /  
+| * |   3b6eb508 |||| 2025-04-01T14:07:01-07:00 |||| Merge branch 'benjaming/python-version-guard' into 'devel'
+| |\ \  
+| | * | f78d6628 |||| 2025-04-01T14:07:01-07:00 |||| [NVSHMEM4Py] Disable nvshmem4py build if Python version is older than 3.8
+| * | |   3373b8a0 |||| 2025-04-01T10:41:56-07:00 |||| Merge branch 'vkhodel/better-docker' into 'devel'
+| |\ \ \  
+| | |/ /  
+| |/| |   
+| | * | c51d7aae |||| 2025-04-01T10:41:56-07:00 |||| Switch testing on non-gc clusters to the Matrix test runner
+| * | |   03ef0154 |||| 2025-04-01T09:26:11-07:00 |||| Merge branch 'benjaming/nvshmem4py_bindings' into 'devel'
+| |\ \ \  
+| | |/ /  
+| |/| |   
+| | * | 644eff36 |||| 2025-04-01T09:26:11-07:00 |||| [NVSHMEM4Py] Initial bindings and Init/Fini core APIs
+| |/ /  
+| * |   543886c4 |||| 2025-03-27T16:24:40-07:00 |||| Merge branch 'arnavg/nvshmem/culibrary-backward-compat' into 'devel'
+| |\ \  
+| | * | 439f072a |||| 2025-03-27T16:24:40-07:00 |||| host/init: Address backward compat with culibrary APIs on CUDA 11.0
+| |/ /  
+| * |   e8013267 |||| 2025-03-25T23:22:38-07:00 |||| Merge branch 'benjaming/update-cybind-branch' into 'devel'
+| |\ \  
+| | * | 580b04eb |||| 2025-03-25T23:22:38-07:00 |||| [NVSHMEM4Py] Update to use main branch of Cybind
+| |/ /  
+| * |   cc8f0687 |||| 2025-03-25T09:37:57-07:00 |||| Merge branch 'arnavg/nvshmem/culibrary-support' into 'devel'
+| |\ \  
+| | * | c3e4c90f |||| 2025-03-25T09:37:57-07:00 |||| host/init: Add support for context-less loading using CUlibrary APIs
+| |/ /  
+| * |   e0481934 |||| 2025-03-24T19:34:16-07:00 |||| Merge branch 'arnavg/nvshmem/bootstrap-inplace' into 'devel'
+| |\ \  
+| | * | 2c95ff9a |||| 2025-03-24T19:34:15-07:00 |||| bootstrap/mpi: [HPL] Add IN-PLACE checks for bootstrap MPI
+| |/ /  
+| * |   6154b265 |||| 2025-03-23T02:18:33-07:00 |||| Merge branch 'kpunniyamurt/refactor_mem_registration' into 'devel'
+| |\ \  
+| | * | 4872b9b8 |||| 2025-03-23T02:18:33-07:00 |||| refactoring register_heap_chunk
+| |/ /  
+| * |   e73bf23a |||| 2025-03-21T13:14:43-07:00 |||| Merge branch 'pezhu/bug_5097198' into 'devel'
+| |\ \  
+| | * | 8b841269 |||| 2025-03-21T13:14:42-07:00 |||| bug_5097198: fix the issue of incorrect args' file path, from testcommon.py
+| |/ /  
+| * |   5e676ae6 |||| 2025-03-21T10:01:40-07:00 |||| Merge branch 'sethh/multi_qp_fix' into 'devel'
+| |\ \  
+| | * | 267927d0 |||| 2025-03-21T10:01:37-07:00 |||| transport/ib: Add support for multiple qps.
+| |/ /  
+| * |   8b0adb0c |||| 2025-03-21T09:51:09-07:00 |||| Merge branch 'vkhodel/better-ptyche' into 'devel'
+| |\ \  
+| | * | 1593e5e2 |||| 2025-03-20T13:37:04-07:00 |||| move away from $HOME on ptyche
+| |/ /  
+| * |   c9aefc15 |||| 2025-03-20T11:15:03-07:00 |||| Merge branch 'benjaming/fix-nvshmem4py-test' into 'devel'
+| |\ \  
+| | * | d3564fc3 |||| 2025-03-20T11:15:03-07:00 |||| [CI] Fix nvshmem4py test
+| |/ /  
+| * |   bd3b0815 |||| 2025-03-17T18:16:10-07:00 |||| Merge branch 'pezhu/src_cmakelist_debug' into 'devel'
+| |\ \  
+| | * | 8f26eac9 |||| 2025-03-17T18:16:10-07:00 |||| [bug]fix for debug build(src/cmakelist.txt)
+| |/ /  
+| * |   cd302520 |||| 2025-03-14T15:24:29-07:00 |||| Merge branch 'arnavg/nvshmem/add-nvidia-peermem-alt' into 'devel'
+| |\ \  
+| | * | ab1ef334 |||| 2025-03-14T15:24:29-07:00 |||| transport/common: Add new sys module filepath for nvidia-peermem
+| | |/  
+| * |   746b3512 |||| 2025-03-12T17:40:44-07:00 |||| Merge branch 'sethh/moe_compilation_issue' into 'devel'
+| |\ \  
+| | * | 6a2af8b7 |||| 2025-03-12T17:40:44-07:00 |||| examples/moe_shuffle: Fix compilation error
+| * | |   9935eba5 |||| 2025-03-10T14:41:29-07:00 |||| Merge branch 'arnavg/nvshmem/remove-unstable-threadfence-code' into 'devel'
+| |\ \ \  
+| | * | | 5bd696bb |||| 2025-03-10T14:41:28-07:00 |||| device/coll: Revert conditional flush_output changes
+| |/ / /  
+| * | |   f5b113de |||| 2025-03-10T14:28:20-07:00 |||| Merge branch 'arnavg/nvshmem/remove-deadcode' into 'devel'
+| |\ \ \  
+| | * | | 09863d7d |||| 2025-03-10T14:28:20-07:00 |||| Remove deadcode in perftest and fix hang in perftest
+| | | |/  
+| | |/|   
+| * | |   b7b7844f |||| 2025-03-10T09:47:18-07:00 |||| Merge branch 'vkhodel/ptyche-support' into 'devel'
+| |\ \ \  
+| | |/ /  
+| |/| |   
+| | * | 8d8571fd |||| 2025-03-10T09:47:18-07:00 |||| Ptyche support
+| |/ /  
+| * |   d9a9c388 |||| 2025-03-08T16:35:57-08:00 |||| Merge branch 'benjaming/python-skeleton' into 'devel'
+| |\ \  
+| | |/  
+| |/|   
+| | * 22780b50 |||| 2025-03-08T16:35:57-08:00 |||| [NVSHMEM4PY] Add CMake infrastructure for generating Python wheels
+| |/  
+| *   36a9fb27 |||| 2025-03-05T16:48:44-08:00 |||| Merge branch 'sethh/bitcode_lib_generalization' into 'devel'
+| |\  
+| | * da91899b |||| 2025-03-05T16:48:44-08:00 |||| nvshmem/llvm_bitcode_library: Generalize the bitcode library.
+| * |   c59999e2 |||| 2025-03-05T16:48:16-08:00 |||| Merge branch 'sethh/enable_clang_build' into 'devel'
+| |\ \  
+| | * | 54bc94df |||| 2025-03-05T16:48:15-08:00 |||| NVSHMEM: Enable clang compilation.
+| |/ /  
+| * |   db129c61 |||| 2025-03-05T14:23:22-08:00 |||| Merge branch 'arnavg/nvshmem/ll-allgather-optimization' into 'devel'
+| |\ \  
+| | * | 08b5fb82 |||| 2025-03-05T14:23:22-08:00 |||| Optimize AllGather + LL for BF16/FP16 dtypes
+| |/ /  
+| * |   59aa5632 |||| 2025-03-05T12:22:04-08:00 |||| Merge branch 'sethh/3_3_Merge_Group' into 'devel'
+| |\ \  
+| | * | 463a9287 |||| 2025-03-03T16:41:55-08:00 |||| merge branch arnavg/nvshmem/on-stream-graph-optimization
+| | * | 7b78d616 |||| 2025-03-03T16:31:02-08:00 |||| merge branch arnavg/nvshmem/numbast-experimental
+| | * | d342f198 |||| 2025-03-03T16:29:13-08:00 |||| merge branch sethh/single_node_mc_ptr_fix
+| | * | 4919020f |||| 2025-03-03T16:26:42-08:00 |||| Merge branch kpunniyamurt/granularity_for_static_heap
+| |/ /  
+| * |   14f738a7 |||| 2025-03-03T09:24:17-08:00 |||| Merge branch 'vkhodel/prenyx-fix' into 'devel'
+| |\ \  
+| | * | 1fdc6450 |||| 2025-02-28T16:00:49-08:00 |||| switch to nvshmem-accessible lustre folder
+| |/ /  
+| * |   9aae8cc3 |||| 2025-02-28T15:37:46-08:00 |||| Merge branch 'arnavg/nvshmem/malloc-nvls-optimization' into 'devel'
+| |\ \  
+| | * | f5cb209d |||| 2025-02-28T15:37:46-08:00 |||| Optimize NVLS resource footprint
+| |/ /  
+| * |   250780d4 |||| 2025-02-25T13:22:03-08:00 |||| Merge branch 'benjaming/fix-7400' into 'devel'
+| |\ \  
+| | * | d5bfd42a |||| 2025-02-25T13:22:03-08:00 |||| Address on-stream perftest hangs due to CUDA graph mode default
+| |/ /  
+| * |   6fb1186d |||| 2025-02-21T07:26:33-08:00 |||| Merge branch 'sesu/nvbugs/5108237' into 'devel'
+| |\ \  
+| | * | c517f99d |||| 2025-02-21T07:26:32-08:00 |||| Fix sync_latency and barrier_latency test results issue.
+| |/ /  
+| * |   43e2c652 |||| 2025-02-14T14:21:00-08:00 |||| Merge branch 'sethh/mc_ptr_null_deref' into 'devel'
+| |\ \  
+| | * | c84e7046 |||| 2025-02-14T14:20:59-08:00 |||| nvshmem/mem_heap: Check for null nvls object.
+| * | |   d11e0a58 |||| 2025-02-14T14:18:28-08:00 |||| Merge branch 'vkhodel/prenyx-cicd' into 'devel'
+| |\ \ \  
+| | |/ /  
+| |/| |   
+| | * | e20cf3c9 |||| 2025-02-14T14:18:27-08:00 |||| Add prenyx support as a variant of EOS config
+| | |/  
+| * |   3b40e253 |||| 2025-02-14T01:46:37-08:00 |||| Merge branch 'benjaming/fix-8100' into 'devel'
+| |\ \  
+| | * | e8e22652 |||| 2025-02-14T01:46:36-08:00 |||| [BUG] Fix bug 5108100
+| |/ /  
+| * |   8dc91467 |||| 2025-02-13T08:27:33-08:00 |||| Merge branch 'release/merge_back_to_devel' into 'devel'
+| |\ \  
+| | |/  
+| |/|   
+| | *   95cffa8a |||| 2025-02-12T12:44:39-08:00 |||| Merge branch 'devel' into 'release/merge_back_to_devel'
+| | |\  
+| | |/  
+| |/|   
+| * |   7dd64dd0 |||| 2025-02-11T18:34:44-08:00 |||| Merge branch 'sethh/on_stream_thread_selection' into 'devel'
+| |\ \  
+| | * | b8ad9f7d |||| 2025-02-11T18:34:44-08:00 |||| fcollect: Select thread count within fcollect API.
+| * | |   de051cf6 |||| 2025-02-10T18:04:44-08:00 |||| Merge branch 'arnavg/nvshmem/multi-mcgroup-perf-degradation' into 'devel'
+| |\ \ \  
+| | |/ /  
+| |/| |   
+| | * | 831793ff |||| 2025-02-10T18:04:44-08:00 |||| Multi-CTA Collectives using Shared MC Group Partitioning Strategy
+| |/ /  
+| * |   11ae0f2b |||| 2025-02-07T18:11:55-08:00 |||| Merge branch 'benjaming/graph-capture' into 'devel'
+| |\ \  
+| | * | 4a8a0c17 |||| 2025-02-07T18:11:55-08:00 |||| [PERFTEST] Add -g argument: use CUDA graphs to launch NVShmem collectives for reduction_on_stream and reducescatter_on_stream test
+| |/ /  
+| | * 9a374ec1 |||| 2025-02-12T13:43:48-07:00 |||| NVSHMEM 3.2.6-1
+| |/  
+|/|   
+* |   ea47bbe5 |||| 2025-02-03T18:23:30-08:00 |||| Merge branch 'release/3_2_5' into 'main'
+|\ \  
+| * | 9536c1ce |||| 2025-02-03T18:19:36-08:00 |||| Version 3.2.5.1
+| |/  
+| *   125b24eb |||| 2025-02-03T18:17:37-08:00 |||| Merge branch 'sethh/llvm_ir_perf_regression' into 'devel'
+| |\  
+| | * b4a66e51 |||| 2025-02-03T18:17:37-08:00 |||| src/llvm_bitcode: Performance fixes for bitcode library
+| |/  
+| *   3cc6c8bc |||| 2025-02-03T11:47:22-08:00 |||| Merge branch 'release/merge_back_to_devel' into 'devel'
+| |\  
+| | * 1924c7a3 |||| 2025-02-01T21:14:47-08:00 |||| NVSHMEM 3.2.4-2
+| |/  
+|/|   
+* |   8065af2b |||| 2025-01-24T17:11:50-08:00 |||| Merge branch 'release/3_2_4' into 'main'
+|\ \  
+| * | 2464d386 |||| 2025-01-24T17:07:40-08:00 |||| Version 3.2.4.1
+| |/  
+| *   a5b9fb7f |||| 2025-01-24T17:03:29-08:00 |||| Merge branch 'release/3_2_4' into 'devel'
+| |\  
+| | * 4135e874 |||| 2025-01-24T17:03:28-08:00 |||| Bug fixes for 3.2.4
+| |/  
+| *   9d4c0280 |||| 2025-01-24T09:53:00-08:00 |||| Merge branch 'release/merge_back_to_devel' into 'devel'
+| |\  
+| | * 2b8415d6 |||| 2025-01-24T08:42:36-08:00 |||| NVSHMEM 3.2.3-2
+| |/  
+|/|   
+* |   c18a1c04 |||| 2025-01-17T22:03:18-08:00 |||| Merge branch 'release/3_2_3' into 'main'
+|\ \  
+| * | b699e360 |||| 2025-01-17T21:59:54-08:00 |||| Version 3.2.3.1
+| |/  
+| *   74879c80 |||| 2025-01-17T21:58:02-08:00 |||| Merge branch 'alanger/pr/use_cudadevicesync' into 'devel'
+| |\  
+| | * fe18cfd0 |||| 2025-01-17T21:58:02-08:00 |||| NVSHMEM 3.2.3
+| |/  
+| *   be3e8b7b |||| 2025-01-17T15:39:01-08:00 |||| Merge branch 'release/merge_back_to_devel' into 'devel'
+| |\  
+| | * eb2ad3c1 |||| 2025-01-17T15:33:09-08:00 |||| NVSHMEM 3.2.2-5
+| |/  
+|/|   
+* |   142df88d |||| 2025-01-15T17:41:03-08:00 |||| Merge branch 'release/3_2_2_4' into 'main'
+|\ \  
+| * | fe0e6f61 |||| 2025-01-15T17:39:40-08:00 |||| Version 3.2.2.4
+| |/  
+| *   0e1db183 |||| 2025-01-15T17:36:50-08:00 |||| Merge branch 'sethh/perftest_fix_default_arguments' into 'devel'
+| |\  
+| | * a9606f5e |||| 2025-01-15T17:36:50-08:00 |||| NVSHMEM Bug fixes for 3.2.2-3
+| |/  
+| *   e2fd0322 |||| 2025-01-15T08:14:54-08:00 |||| Merge branch 'release/merge_back_to_devel' into 'devel'
+| |\  
+| | * ce90fea0 |||| 2025-01-14T14:11:25-08:00 |||| Version 3.2.2.2
+| |/  
+|/|   
+* |   35d220b0 |||| 2025-01-13T19:14:50-08:00 |||| Merge branch 'release/3_2_2' into 'main'
+|\ \  
+| * | 0fa893c2 |||| 2025-01-13T19:10:54-08:00 |||| NVSHMEM 3.2.2
+| |/  
+| *   8e253699 |||| 2025-01-13T19:08:37-08:00 |||| Merge branch 'release/3_2_2_fixes' into 'devel'
+| |\  
+| | * 2f38b5dd |||| 2025-01-13T19:08:37-08:00 |||| Release/3.2.2 fixes
+| |/  
+| *   a6753268 |||| 2025-01-09T09:08:23-08:00 |||| Merge branch 'release/merge_321_to_devel' into 'devel'
+| |\  
+| | * 46aa130d |||| 2025-01-08T18:54:34-08:00 |||| Version 3.2.1-2
+| |/  
+|/|   
+* |   59322595 |||| 2025-01-07T22:11:35-08:00 |||| Merge branch 'release/3_2_1' into 'main'
+|\ \  
+| * \   eb3482ae |||| 2025-01-07T22:10:49-08:00 |||| Merge branch 'main' into 'release/3_2_1'
+| |\ \  
+| |/ /  
+|/| |   
+* | |   34a7fab6 |||| 2025-01-01T08:19:33-08:00 |||| Merge branch 'release/3_2_0' into 'main'
+|\ \ \  
+| * | | 6c9c33c3 |||| 2024-12-31T15:54:29-08:00 |||| NVSHMEM 3.2.0
+| * | | d37dbb69 |||| 2024-12-31T16:00:07-08:00 |||| in-place clang-formatting
+* | | |   8a6f4f1f |||| 2024-10-29T04:31:06-07:00 |||| Merge branch 'devel' into 'main'
+|\ \ \ \  
+* \ \ \ \   03a91ab9 |||| 2024-10-25T19:17:41-07:00 |||| Merge branch 'devel' into 'main'
+|\ \ \ \ \  
+| | | | * | 85eb6252 |||| 2025-01-07T17:19:39-08:00 |||| NVSHMEM 3.2.1
+| | | | |/  
+| | | | *   d06cc3ef |||| 2025-01-07T17:16:03-08:00 |||| Merge branch 'sethh/devel_3_2_1' into 'devel'
+| | | | |\  
+| | | | | * e5123937 |||| 2025-01-07T17:16:02-08:00 |||| NVSHMEM: Bug fixes for 3.2.1 RC
+| | | | |/  
+| | | | * 80a85b3c |||| 2025-01-06T12:18:39-08:00 |||| Merge branch 'release/merge_320_to_devel' into 'devel'
+| | | |/| 
+| | | | * 48408d43 |||| 2025-01-06T12:18:39-08:00 |||| NVSHMEM 3.2 Merge main back to devel
+| | | |/  
+| | | *   e833e1dd |||| 2024-12-31T15:51:43-08:00 |||| Merge branch 'sethh/perftest_examples_dlopen_mpi' into 'devel'
+| | | |\  
+| | | | * 50f2a159 |||| 2024-12-31T15:51:43-08:00 |||| perftest and examples: Remove linker dependency on MPI and SHMEM.
+| | | |/  
+| | | *   259f037e |||| 2024-12-31T14:44:54-08:00 |||| Merge branch 'pezhu/llvm_ir_library' into 'devel'
+| | | |\  
+| | | | * 7faf2654 |||| 2024-12-31T14:44:54-08:00 |||| Tests for bitcode library
+| | | |/  
+| | | *   92e4d0c3 |||| 2024-12-31T10:50:01-08:00 |||| Merge branch 'alanger/pr/coll_perftest_args' into 'devel'
+| | | |\  
+| | | | * 3c9b8189 |||| 2024-12-31T10:50:01-08:00 |||| Command line args for collectives perftests
+| | | * |   fcfa91c0 |||| 2024-12-31T10:42:58-08:00 |||| Merge branch 'sethh/CI_speedup' into 'devel'
+| | | |\ \  
+| | | | |/  
+| | | |/|   
+| | | | * 8c476231 |||| 2024-12-31T10:42:58-08:00 |||| CI/test: Move sysmem failing tests to skip
+| | | |/  
+| | | *   b1a9964b |||| 2024-12-30T16:24:46-08:00 |||| Merge branch 'sethh/CI_check_format_fix' into 'devel'
+| | | |\  
+| | | | * 8add734e |||| 2024-12-30T16:24:46-08:00 |||| CI: Limit check-format scope.
+| | | |/  
+| | | *   f4417c11 |||| 2024-12-30T12:43:55-08:00 |||| Merge branch 'sethh/llvm_ir_library' into 'devel'
+| | | |\  
+| | | | * ef378fb7 |||| 2024-12-30T12:43:54-08:00 |||| NVSHMEM: Add initial bitcode library
+| | | |/  
+| | | *   a64f7051 |||| 2024-12-25T00:54:06-08:00 |||| Merge branch 'arnavg/nvshmem/nvls-multi-cta-collectives' into 'devel'
+| | | |\  
+| | | | * d2452cb5 |||| 2024-12-25T00:54:06-08:00 |||| Multi-CTA OnStream AllReduce and ReduceScatter
+| | | |/  
+| | | *   83b7fc47 |||| 2024-12-24T06:27:11-08:00 |||| Merge branch 'sethh/moe_example' into 'devel'
+| | | |\  
+| | | | * 2ca9287d |||| 2024-12-24T06:27:11-08:00 |||| examples: Add a performance example for MoE topK alltoallv
+| | | |/  
+| | | *   18d562ee |||| 2024-12-23T17:33:39-08:00 |||| Merge branch 'arnavg/nvshmem/nccl-nvshmem-interop-test' into 'devel'
+| | | |\  
+| | | | * 621d646d |||| 2024-12-23T17:33:39-08:00 |||| Adding NCCL & NVSHMEM Interop test for XLA
+| | | * |   6b71334e |||| 2024-12-23T17:27:54-08:00 |||| Merge branch 'alanger/pr/ring_reduce_example' into 'devel'
+| | | |\ \  
+| | | | |/  
+| | | |/|   
+| | | | * 3cecfd54 |||| 2024-12-23T17:27:54-08:00 |||| Ring based allreduce example code
+| | | |/  
+| | | *   f380662f |||| 2024-12-23T14:51:26-08:00 |||| Merge branch 'sethh/3_2_minor_bug_fixes' into 'devel'
+| | | |\  
+| | | | * fc3eec65 |||| 2024-12-23T14:51:26-08:00 |||| NVSHMEM Version 3.2 Minor Bug Fixes
+| | | |/  
+| | | *   2ab3f6bc |||| 2024-12-20T14:02:27-08:00 |||| Merge branch 'arnavg/nvshmem/nvls-nccl-check-fix' into 'devel'
+| | | |\  
+| | | | * fe46ec1b |||| 2024-12-20T14:02:27-08:00 |||| Fix algo selection check for NVLS collectives
+| | | |/  
+| | | *   7676aec0 |||| 2024-12-18T16:17:50-08:00 |||| Merge branch 'arnavg/nvshmem/fix-rs-minmax-overflow' into 'devel'
+| | | |\  
+| | | | * ee9c12e2 |||| 2024-12-18T16:17:50-08:00 |||| Address RS min/max overflow issue
+| | | |/  
+| | | *   f4a5d86b |||| 2024-12-12T01:29:16-08:00 |||| Merge branch 'arnavg/nvshmem/barrier-sync-kval' into 'devel'
+| | | |\  
+| | | | * ca697c00 |||| 2024-12-12T01:29:16-08:00 |||| Update heuristics for on-stream collectives
+| | | |/  
+| | | *   8be7ee63 |||| 2024-12-11T02:15:13-08:00 |||| Merge branch 'monah/bug_4978102' into 'devel'
+| | | |\  
+| | | | * 392afafb |||| 2024-12-11T02:15:13-08:00 |||| Fix typo for QA_BIND_TO environment parameter
+| | | |/  
+| | | *   9ea7e4ab |||| 2024-12-10T10:48:14-08:00 |||| Merge branch 'sesu/nvbugs/4972941' into 'devel'
+| | | |\  
+| | | | * 0a7c6562 |||| 2024-12-10T10:48:14-08:00 |||| Add a patch for NVLS reduce algo, resolve the issue when platform/reduction...
+| | | |/  
+| | | *   efb13c56 |||| 2024-12-02T03:22:20-08:00 |||| Merge branch 'sesu/nvbugs/4977495' into 'devel'
+| | | |\  
+| | | | * f67b7503 |||| 2024-12-02T03:22:19-08:00 |||| Create folder before create char dev
+| | | |/  
+| | | *   cb08ea95 |||| 2024-11-21T17:12:02-08:00 |||| Merge branch 'sethh/eos_nvls_code' into 'devel'
+| | | |\  
+| | | | * c3b81dae |||| 2024-11-21T17:12:02-08:00 |||| CI: add NVLS job for EOS.
+| | | |/  
+| | | *   50af94a1 |||| 2024-11-19T00:29:05-08:00 |||| Merge branch 'kpunniyamurt/va_alloc_p2p_gpus' into 'devel'
+| | | |\  
+| | | | * 13c63b1f |||| 2024-11-19T00:29:04-08:00 |||| Dynamically size the UC and MC heap size based on runtime number of P2P connected GPUs
+| | | |/  
+| | | *   92105fda |||| 2024-11-18T03:02:45-08:00 |||| Merge branch 'sesu/bind-to-socket-for-bug-4903146' into 'devel'
+| | | |\  
+| | | | * f67910ae |||| 2024-10-23T14:20:38+08:00 |||| Support --bind-to numa/none/socket in command lines; Add atomic cases in single node perftest.
+| |_|_|/  
+|/| | |   
+| | | *   ee8bc322 |||| 2024-11-15T23:23:57-08:00 |||| Merge branch 'arnavg/nvshmem/nvls-allreduce-bf16' into 'devel'
+| | | |\  
+| | | | * e7ad5d9d |||| 2024-11-15T23:23:57-08:00 |||| Support for NVLS Half-Precision AR
+| | | |/  
+| | | *   9b5dccfd |||| 2024-11-15T20:19:25-08:00 |||| Merge branch 'arnavg/nvshmem/shmem-perftest-breakage' into 'devel'
+| | | |\  
+| | | | * 68c525af |||| 2024-11-15T20:19:24-08:00 |||| Use print_table_basic for pt-to-pt bw test
+| | | |/  
+| | | *   e09ddc97 |||| 2024-11-14T07:36:18-08:00 |||| Merge branch 'pmarkthub/nvbugs/4949016' into 'devel'
+| | | |\  
+| | | | * 312dcca3 |||| 2024-11-14T07:36:18-08:00 |||| [NVBUG 4949016][IBGDA & IBDEVX] Fix bug in ibgda_rc_init2rtr when using RoCE v1 and add support for RoCE v2
+| | | |/  
+| | | *   daf8e45e |||| 2024-11-14T06:52:50-08:00 |||| Merge branch 'arnavg/nvshmem/imex-scripts' into 'devel'
+| | | |\  
+| | | | * 7cb65bdd |||| 2024-11-14T06:52:50-08:00 |||| Add support for imex channel scripts
+| | | * |   de23f7e8 |||| 2024-11-14T06:50:18-08:00 |||| Merge branch 'sesu/nvbugs/4958070' into 'devel'
+| | | |\ \  
+| | | | |/  
+| | | |/|   
+| | | | * 8fe6ef41 |||| 2024-11-14T06:50:17-08:00 |||| Fix for bug 4958070, Ignore the mc_ptr test when PE=1.
+| | | |/  
+| | | *   60389bd1 |||| 2024-11-13T21:58:07-08:00 |||| Merge branch 'arnavg/nvshmem/nvls-oneshot-ar' into 'devel'
+| | | |\  
+| | | | * 41a2ec63 |||| 2024-11-13T21:58:06-08:00 |||| Add NVLS OneShot AR implementation
+| | | |/  
+| | | *   313b3bfe |||| 2024-11-12T10:31:31-08:00 |||| Merge branch 'arnavg/nvshmem/sm100_test_perftest' into 'devel'
+| | | |\  
+| | | | * 56eec8df |||| 2024-11-12T10:31:31-08:00 |||| Update SM100 target to tests
+| | | |/  
+| | | *   6abdd081 |||| 2024-11-07T16:31:04-08:00 |||| Merge branch 'vkhodel/better_pkg' into 'devel'
+| | | |\  
+| | | | * 3a4517b0 |||| 2024-11-07T16:31:04-08:00 |||| Use ccache to get 3x speedup on CI/CD build jobs
+| | | |/  
+| | | * 764df11d |||| 2024-11-07T07:52:44-08:00 |||| Merge branch 'arnavg/nvshmem/blackwell-enablement' into 'devel'
+| | |/| 
+| | | * 77882bad |||| 2024-11-07T07:52:44-08:00 |||| Enable Blackwell SM100
+| | |/  
+| | * 19095ef6 |||| 2024-10-29T04:11:56-07:00 |||| Merge branch 'sethh/fix_mnnvl_allgather' into 'devel'
+| |/| 
+| | * 37932283 |||| 2024-10-29T04:11:56-07:00 |||| fcollect: disable LL in hybrid MNNVL environments.
+| |/  
+| *   9197203c |||| 2024-10-25T19:03:34-07:00 |||| Merge branch 'sethh/fcollect_mnnvl_fix' into 'devel'
+| |\  
+| | * e907c06b |||| 2024-10-25T19:03:32-07:00 |||| NVSHMEM: merge code for 3.1.6 RC
+| |/  
+| *   9cf24b83 |||| 2024-10-25T18:34:57-07:00 |||| Merge branch 'main' into 'devel'
+| |\  
+| |/  
+|/|   
+* |   f75ccd73 |||| 2024-10-19T07:35:57-07:00 |||| Merge branch 'release/3_1_5' into 'main'
+|\ \  
+| * \   b6e097ec |||| 2024-10-18T18:03:20-07:00 |||| Merge branch 'main' into release/3_1_5
+| |\ \  
+| |/ /  
+|/| |   
+* | |   aaab9820 |||| 2024-10-10T01:41:25-07:00 |||| Merge branch 'release/3_1_4' into 'main'
+|\ \ \  
+| * | | b025b683 |||| 2024-10-10T01:41:25-07:00 |||| NVSHMEM 3.1.4 Release Candidate
+|/ / /  
+* | |   7f152031 |||| 2024-10-05T11:28:05-07:00 |||| Merge branch 'release/3_1_1' into 'main'
+|\ \ \  
+| * \ \   a00d31e9 |||| 2024-10-05T07:20:30-07:00 |||| Merge branch 'main' into release/3_1_1
+| |\ \ \  
+| |/ / /  
+|/| | |   
+* | | |   6720e7b1 |||| 2024-10-02T17:45:08-07:00 |||| Merge branch 'release/3_1_0' into 'main'
+|\ \ \ \  
+| * | | | 306498dc |||| 2024-10-02T17:45:07-07:00 |||| NVSHMEM: 3.1.0-0
+|/ / / /  
+* | | |   f9b69fb6 |||| 2024-06-18T18:10:08-07:00 |||| Merge branch 'sethh/v3_0_6_4' into 'main'
+|\ \ \ \  
+| * | | | 3367a3ec |||| 2024-06-18T18:06:51-07:00 |||| version: Update to 3.0.6-4 for merge to main.
+| | * | | 4848875c |||| 2024-10-05T07:10:01-07:00 |||| NVSHMEM 3.1.1 Release Candidate
+| | | | * be845f4d |||| 2024-10-22T11:59:25-07:00 |||| Merge branch 'vkhodel/better_pkg' into 'devel'
+| | | |/| 
+| | | | * 83356cb0 |||| 2024-10-22T11:59:25-07:00 |||| propagate errors from make to gitlab; fail if there is a container version...
+| | | |/  
+| | | *   7ed0c555 |||| 2024-10-18T17:59:21-07:00 |||| Merge branch 'sethh/reduce_perf_fix' into 'devel'
+| | | |\  
+| | | | * a47ca8f8 |||| 2024-10-18T17:59:21-07:00 |||| NVSHMEM Bug Fixes from 3.1.4 RC
+| | | |/  
+| | | *   bea63f72 |||| 2024-10-15T11:46:12-07:00 |||| Merge branch 'kartiki/ibgda-sysmem-heap-ci-on-aws' into 'devel'
+| | | |\  
+| | | | * 4aa86920 |||| 2024-10-15T11:46:12-07:00 |||| Run IBGDA sysmem heap tests on AWS P5 cluster during CI
+| | | |/  
+| | | *   1fb76150 |||| 2024-10-13T09:50:23-07:00 |||| Merge branch 'arnavg/nvshmem/clang-format-token' into 'devel'
+| | | |\  
+| | | | * 9465e6f6 |||| 2024-10-13T09:50:22-07:00 |||| Update auto formatting clang-token
+| | | |/  
+| | | *   a81a76fa |||| 2024-10-11T17:46:18-07:00 |||| Merge branch 'vkhodel/docker' into 'devel'
+| | | |\  
+| | | | * a4c67d1e |||| 2024-10-11T17:46:17-07:00 |||| minor changes to building and package scripts
+| | | |/  
+| | | *   501a4a3d |||| 2024-10-10T01:36:33-07:00 |||| Merge branch 'sethh/fix_regcount_regression' into 'devel'
+| | | |\  
+| | | | * 9d960290 |||| 2024-10-10T01:36:32-07:00 |||| NVSHMEM 3.1 Bug Fixes for Release Candidate
+| | | |/  
+| | | *   fcd34a53 |||| 2024-10-09T08:28:13-07:00 |||| Merge branch 'arnavg/nvshmem/nvbug4786955' into 'devel'
+| | | |\  
+| | | | * 039dca3c |||| 2024-10-09T08:28:12-07:00 |||| Fix for NVSHMEM 3+ - nvmlDeviceGetGpuFabricInfoV segfaults on Eos with CUDA 12.5 and CUDA compatibility
+| | | |/  
+| | | * c3f9b441 |||| 2024-10-08T09:18:24-07:00 |||| Merge branch 'arnavg/nvshmem/nvls-allreduce-pe-calc' into 'devel'
+| | |/| 
+| | | * deffeebc |||| 2024-10-08T09:18:23-07:00 |||| Fix for [NVSHMEM 3.1][3.1.1-1] [NVLS feature] allreduce cases failed on single Viking H20 node.
+| | |/  
+| | *   17c29f1a |||| 2024-10-05T07:07:49-07:00 |||| Merge branch 'arnavg/nvshmem/nvbug4891787' into 'devel'
+| | |\  
+| | | * 278c5602 |||| 2024-10-05T07:07:48-07:00 |||| NVSHMEM: Fix bugs in 3.1.0 Release Candidate
+| | |/  
+| | *   217814cc |||| 2024-10-04T17:59:05-07:00 |||| Merge branch 'release/merge_back_to_devel' into 'devel'
+| | |\  
+| | | * fa74643d |||| 2024-10-04T17:59:05-07:00 |||| Merge back to devel after 3.1.0.0
+| | |/  
+| | *   c14419c2 |||| 2024-10-02T16:10:21-07:00 |||| Merge branch 'alanger/pr/add_half_precision_support' into 'devel'
+| | |\  
+| | | * 53cd70a4 |||| 2024-10-02T16:10:21-07:00 |||| Add collective APIs for half and bfloat16 datatypes
+| | * |   56628ccb |||| 2024-10-02T13:16:11-07:00 |||| Merge branch 'arnavg/nvshmem/nvls-default-selection' into 'devel'
+| | |\ \  
+| | | * | 4efc0983 |||| 2024-10-02T13:16:10-07:00 |||| Tune default algo selection strategy for collectives
+| | |/ /  
+| | * |   8fdf46a8 |||| 2024-10-02T07:13:22-07:00 |||| Merge branch 'sethh/LL128_implementation' into 'devel'
+| | |\ \  
+| | | |/  
+| | |/|   
+| | | * 3e3c6347 |||| 2024-10-02T07:13:22-07:00 |||| FCollect LL8 optimizations and LL128 implementation
+| | |/  
+| | *   d69a86ea |||| 2024-09-30T17:15:17-07:00 |||| Merge branch 'sethh/CI_ninja_build_enable' into 'devel'
+| | |\  
+| | | * 36e6357d |||| 2024-09-30T17:15:17-07:00 |||| CMake: fix regression in Ninja compilation.
+| | |/  
+| | *   76e549e1 |||| 2024-09-30T15:17:08-07:00 |||| Merge branch 'alanger/pr/fix_shmem_get_bw_reporting' into 'devel'
+| | |\  
+| | | * c9f60979 |||| 2024-09-30T15:17:08-07:00 |||| Fix shmem_get_bw reporting
+| | |/  
+| | *   f3fbaabd |||| 2024-09-30T11:34:39-07:00 |||| Merge branch 'alanger/pr/increase_reduce_scratch_size' into 'devel'
+| | |\  
+| | | * 698d0797 |||| 2024-09-30T07:45:02-07:00 |||| Increase REDUCE SCRATCH SIZE
+| | * |   9597ce6c |||| 2024-09-30T08:29:03-07:00 |||| Merge branch 'pmarkthub/gpu_verbs/dmabuf-for-control-bufs' into 'devel'
+| | |\ \  
+| | | |/  
+| | |/|   
+| | | * ae11d71c |||| 2024-09-30T08:29:03-07:00 |||| [IBGDA] Implement DMABUF support for control buffers
+| | |/  
+| | *   893b77cd |||| 2024-09-27T23:01:27-07:00 |||| Merge branch 'pmarkthub/gpu_verbs/a2a-with-signal-set' into 'devel'
+| | |\  
+| | | * 33157a71 |||| 2024-09-27T23:01:27-07:00 |||| [IBGDA & A2A] Change to A2A implementation to use SIGNAL_SET when using P2P or IBGDA
+| | |/  
+| | *   8d365154 |||| 2024-09-27T21:11:16-07:00 |||| Merge branch 'alanger/pr/dynamic_gid' into 'devel'
+| | |\  
+| | | * 9d606c25 |||| 2024-09-27T21:11:15-07:00 |||| Dynamic GID detection
+| | |/  
+| | *   efd75b57 |||| 2024-09-27T15:23:35-07:00 |||| Merge branch 'sethh/kitmaker_fixes' into 'devel'
+| | |\  
+| | | * 565e84e6 |||| 2024-09-27T15:23:34-07:00 |||| CMake: Prepare NVSHMEM Packages for external packaging.
+| | |/  
+| | *   08b615b2 |||| 2024-09-25T10:29:33-07:00 |||| Merge branch 'arnavg/nvshmem/fcollect_multi_cta' into 'devel'
+| | |\  
+| | | * 2d2adc32 |||| 2024-09-25T10:29:33-07:00 |||| NVLS Allgather Multi-CTA Support for DIRECT
+| | |/  
+| | *   3119db98 |||| 2024-09-24T20:01:41-07:00 |||| Merge branch 'arnavg/nvshmem/nvls-allreduce' into 'devel'
+| | |\  
+| | | * 949e5eec |||| 2024-09-24T20:01:41-07:00 |||| NVLS AllReduce TwoShot support
+| | |/  
+| | *   30e5b4f8 |||| 2024-09-23T16:12:25-07:00 |||| Merge branch 'sethh/devicelib_env_rename' into 'devel'
+| | |\  
+| | | * 8c670ffd |||| 2024-09-23T16:12:24-07:00 |||| CMake: Rename the devicelib cuda home variable
+| | |/  
+| | *   bf015085 |||| 2024-09-23T12:24:07-07:00 |||| Merge branch 'sethh/add_cmake_binaries' into 'devel'
+| | |\  
+| | | * 550007b4 |||| 2024-09-23T12:24:07-07:00 |||| CMake: Prepare packages for 3.1
+| | |/  
+| | *   8695ac11 |||| 2024-09-16T20:18:38-07:00 |||| Merge branch 'pezhu/devel_coverity' into 'devel'
+| | |\  
+| | | * 35dc6efb |||| 2024-09-16T20:18:38-07:00 |||| [coverity]: cid: 22649617,22649625,22649627
+| | |/  
+| | *   29f96e58 |||| 2024-09-10T17:20:48-07:00 |||| Merge branch 'alanger/pr/fix_team_split_strided' into 'devel'
+| | |\  
+| | | * 33558d66 |||| 2024-09-10T17:20:48-07:00 |||| Fix stride calculation in team split strided
+| | |/  
+| | *   3548b1ac |||| 2024-09-06T18:13:28-07:00 |||| Merge branch 'pezhu/devel_coverity' into 'devel'
+| | |\  
+| | | * 7aa79dfa |||| 2024-09-06T18:13:28-07:00 |||| [coverity] CID: minor fix for CID 22649630 22650451 22650450
+| | |/  
+| | *   a84a5400 |||| 2024-09-05T17:18:12-07:00 |||| Merge branch 'arnavg/nvshmem/nvbug4655341' into 'devel'
+| | |\  
+| | | * 91fcf39e |||| 2024-09-05T17:18:12-07:00 |||| [nvbug: 4655341] Fix build issue for DVS
+| | |/  
+| | *   f9f67ba7 |||| 2024-08-30T15:47:41-07:00 |||| Merge branch 'vectorize_packLL' into 'devel'
+| | |\  
+| | | * 56cdd816 |||| 2024-08-30T15:47:41-07:00 |||| Vectorize LL8 PackLL
+| | * |   14eb70a3 |||| 2024-08-30T13:24:09-07:00 |||| Merge branch 'ridgunji/mem_heap_test_development' into 'devel'
+| | |\ \  
+| | | |/  
+| | |/|   
+| | | * 13b1fbbd |||| 2024-08-30T13:24:09-07:00 |||| Development of the NVSHMEM symmetric heap class tests
+| | |/  
+| | *   90276aa8 |||| 2024-08-30T09:11:32-07:00 |||| Merge branch 'arnavg/nvshmem/nvls-rs-support' into 'devel'
+| | |\  
+| | | * 73d74a0e |||| 2024-08-30T09:11:32-07:00 |||| NVLS ReduceScatter Support for internal teams
+| | |/  
+| | *   3fc23cad |||| 2024-08-29T17:17:02-07:00 |||| Merge branch 'abaran/function_call_fix' into 'devel'
+| | |\  
+| | | * a8af239a |||| 2024-08-29T17:17:02-07:00 |||| Ensure get psync len function uses get fcollect psync len function
+| | |/  
+| | *   5a4186e9 |||| 2024-08-26T18:30:23-07:00 |||| Merge branch 'pezhu/devel_coverity' into 'devel'
+| | |\  
+| | | * fed7da5f |||| 2024-08-26T18:30:23-07:00 |||| [coverity] Logically dead code
+| | |/  
+| | *   7663c0c8 |||| 2024-08-19T17:37:30-07:00 |||| Merge branch 'arnavg/nvshmem/uid-bootstrap-examples' into 'devel'
+| | |\  
+| | | * 7991b526 |||| 2024-08-19T17:37:30-07:00 |||| Add UID bootstrap example
+| | |/  
+| | *   e2b23ccf |||| 2024-08-19T16:39:04-07:00 |||| Merge branch 'arnavg/nvshmem/perftest-bugs' into 'devel'
+| | |\  
+| | | * f1f9bc69 |||| 2024-08-19T16:39:04-07:00 |||| OOB access in atomic_bw
+| | |/  
+| | *   1104593c |||| 2024-08-15T12:08:38-07:00 |||| Merge branch 'arnavg/nvshmem/cuda-compat-issue' into 'devel'
+| | |\  
+| | | * 360da707 |||| 2024-08-15T12:08:37-07:00 |||| WAR for CUDA 12.5 compat with MNNVL
+| | |/  
+| | *   14c607ed |||| 2024-08-13T03:52:39-07:00 |||| Merge branch 'arnavg/nvshmem/nvls-mc-ptr' into 'devel'
+| | |\  
+| | | * 06768a01 |||| 2024-08-13T03:52:38-07:00 |||| NVLS Multicast Heap API Support
+| | |/  
+| | *   2f857b9c |||| 2024-08-12T18:05:00-07:00 |||| Merge branch 'pezhu/devel_coverity' into 'devel'
+| | |\  
+| | | * 013edf35 |||| 2024-08-12T18:04:59-07:00 |||| [Coverity]  22649610 22649594   Uninitialized scalar variable
+| | * |   7a05d961 |||| 2024-08-12T13:38:05-07:00 |||| Merge branch 'alanger/pr/add_rs_api' into 'devel'
+| | |\ \  
+| | | |/  
+| | |/|   
+| | | * 88766216 |||| 2024-08-12T13:38:04-07:00 |||| Add reducescatter collective API
+| | |/  
+| | *   811ce7a3 |||| 2024-08-08T11:54:51-07:00 |||| Merge branch 'arnavg/nvshmem/nvls-support-ll-algo' into 'devel'
+| | |\  
+| | | * b99bddf2 |||| 2024-08-08T11:54:51-07:00 |||| NVLS LL algo support for allgather onstream and device API
+| | |/  
+| | *   ff1f4058 |||| 2024-08-08T10:50:15-07:00 |||| Merge branch 'ridgunji/mem_unit_tests' into 'devel'
+| | |\  
+| | | * 3fa0ad82 |||| 2024-08-08T10:50:15-07:00 |||| Added first unit test of mem_p2p_transport
+| | |/  
+| | *   f19ad92a |||| 2024-08-08T07:50:35-07:00 |||| Merge branch 'alanger/pr/revert_to_3.0_version' into 'devel'
+| | |\  
+| | | * 417fa3aa |||| 2024-08-07T15:01:35-07:00 |||| clang format
+| | | * 7adff972 |||| 2024-08-07T15:00:06-07:00 |||| Revert minor version; Set to 3.0.15.0
+| | |/  
+| | *   8729ad70 |||| 2024-08-06T16:53:37-07:00 |||| Merge branch 'alanger/pr/use_custreamwaitvalue_when_bypassflush_set' into 'devel'
+| | |\  
+| | | * 24169d66 |||| 2024-07-17T14:13:50-07:00 |||| use cuStreamWaitValue when BYPASS_FLUSH is set
+| | |/  
+| | *   806cbff1 |||| 2024-08-06T16:35:48-07:00 |||| Merge branch 'alanger/pr/fix_custreamwrite_usage' into 'devel'
+| | |\  
+| | | * e7b2df97 |||| 2024-07-17T14:15:28-07:00 |||| Update version to 3.1.5
+| | | * 2426d962 |||| 2024-07-12T21:21:57-07:00 |||| Use cuStreamWriteValue only when job connectivity is LDST_ATOMICS
+| | |/  
+| | *   8bf506a4 |||| 2024-08-02T17:37:14-07:00 |||| Merge branch 'pezhu/devel_coverity' into 'devel'
+| | |\  
+| | | * d0113f98 |||| 2024-08-02T17:37:14-07:00 |||| Coverity: 22649622 Resource leak
+| | |/  
+| | *   c3111f62 |||| 2024-07-31T10:09:19-07:00 |||| Merge branch 'abaran/perftest_bug_fix' into 'devel'
+| | |\  
+| | | * 8fb7d54e |||| 2024-07-31T10:09:18-07:00 |||| Fix bug 4719294
+| | |/  
+| | *   5455c98d |||| 2024-07-30T10:29:55-07:00 |||| Merge branch 'arnavg/nvshmem/nvbug4774872-2' into 'devel'
+| | |\  
+| | | * 8a1c7cc5 |||| 2024-07-30T10:29:55-07:00 |||| Fix nvbug 4774872
+| | |/  
+| | *   350b7431 |||| 2024-07-29T11:29:49-07:00 |||| Merge branch 'sethh/Fix_Cuda_symbols' into 'devel'
+| | |\  
+| | | * bc1dcfd5 |||| 2024-07-29T11:29:49-07:00 |||| nvmlwrap: Fix cuda constant values.
+| | |/  
+| | *   44ad5336 |||| 2024-07-29T11:27:29-07:00 |||| Merge branch 'arnavg/nvshmem/remote-perftest-ib-list' into 'devel'
+| | |\  
+| | | * 5efaec26 |||| 2024-07-29T11:27:29-07:00 |||| Remove host/coll variants from perftest IB list
+| | |/  
+| | *   a03a73eb |||| 2024-07-26T10:57:36-07:00 |||| Merge branch 'arnavg/nvshmem/nvls-support-device-state' into 'devel'
+| | |\  
+| | | * dd049429 |||| 2024-07-26T10:57:35-07:00 |||| NVLINK SHARP support for internal teams
+| | |/  
+| | *   1ca262e3 |||| 2024-07-25T23:05:26-07:00 |||| Merge branch 'arnavg/nvshmem/enable_sm100' into 'devel'
+| | |\  
+| | | * a32a64c1 |||| 2024-07-25T23:05:25-07:00 |||| Enable Blackwell build and improve CI & docs
+| | |/  
+| | *   c9e6d98b |||| 2024-07-24T23:42:50-07:00 |||| Merge branch 'ridgunji/nvshmem/fix_vmm_segfault' into 'devel'
+| | |\  
+| | | * 9bdc6c2e |||| 2024-07-24T23:42:50-07:00 |||| Add missing remote transport initialization for segfault issue
+| | |/  
+| | *   36f79014 |||| 2024-07-22T18:23:41-07:00 |||| Merge branch 'ridgunji/mem_transport_minorFixes' into 'devel'
+| | |\  
+| | | * b75562b1 |||| 2024-07-22T18:23:41-07:00 |||| Made minor fixes to the mem_transport.cpp and .hpp files
+| | |/  
+| | *   5ba20e7f |||| 2024-07-22T11:25:43-07:00 |||| Merge branch 'arnavg/nvshmem/remove-perftest-host' into 'devel'
+| | |\  
+| | | * 228fa78b |||| 2024-07-22T11:25:43-07:00 |||| Deprecate host-side coll perftest
+| | |/  
+| | *   c920aefc |||| 2024-07-18T10:46:54-07:00 |||| Merge branch 'arnavg/nvshmem/reduction_bug' into 'devel'
+| | |\  
+| | | * e71f7b84 |||| 2024-07-18T10:46:54-07:00 |||| Fix nvbug for cuda invalid resource handle for reduction
+| | |/  
+| | *   dd0a6c8c |||| 2024-07-15T17:28:01-07:00 |||| Merge branch 'arnavg/nvshmem/host-coll-bug' into 'devel'
+| | |\  
+| | | * eb2f58ab |||| 2024-07-15T17:28:01-07:00 |||| Address bug in perftest/host/coll
+| | |/  
+| | *   d72718ed |||| 2024-07-12T14:58:45-07:00 |||| Merge branch 'arnavg/nvshmem/perftest-r2r-debug' into 'devel'
+| | |\  
+| | | * 86497ec1 |||| 2024-07-12T14:58:45-07:00 |||| Remove memcpyAsync to minimize r2r variations
+| | |/  
+| | *   18f37eda |||| 2024-07-09T13:05:05-07:00 |||| Merge branch 'sethh/symmetric_mem_refactor' into 'devel'
+| | |\  
+| | | * 53c05e0f |||| 2024-07-03T12:53:38-07:00 |||| symmetric_heap: move functions called in class to protected.
+| | * |   b7854869 |||| 2024-07-09T13:04:40-07:00 |||| Merge branch 'sethh/env_disambiguation' into 'devel'
+| | |\ \  
+| | | |/  
+| | |/|   
+| | | * 66ae3c24 |||| 2024-07-05T13:06:34-07:00 |||| in-place clang-formatting
+| | | * 6b0cae05 |||| 2024-07-05T11:56:06-07:00 |||| env: Clarify the bootstrap plugin environment vars
+| | * |   80ec6914 |||| 2024-07-05T23:56:35-07:00 |||| Merge branch 'alanger/pr/use_custreamwaitvalue' into 'devel'
+| | |\ \  
+| | | |/  
+| | |/|   
+| | | * 14a36c27 |||| 2024-07-05T23:56:35-07:00 |||| Use cuStreamWriteValue64 instead of signal_op_on_stream in put_signal_on_stream API
+| | |/  
+| | *   72e24da1 |||| 2024-07-02T13:02:24-07:00 |||| Merge branch 'sethh/CI_fix_timeouts' into 'devel'
+| | |\  
+| | | * 2b9f4aaa |||| 2024-07-02T13:02:24-07:00 |||| CI: add timeouts to jobs missing them.
+| | |/  
+| | *   73c12740 |||| 2024-06-28T15:56:42-07:00 |||| Merge branch 'arnavg/nvshmem/versioned-structs' into 'devel'
+| | |\  
+| | | * c619b00d |||| 2024-06-28T15:56:42-07:00 |||| Fix missing initialization in gpu_coll_env_params_var
+| | |/  
+| | *   5461c5e1 |||| 2024-06-28T14:25:57-07:00 |||| Merge branch 'alanger/pr/fix_timeout_initializer' into 'devel'
+| | |\  
+| | | * 5200481a |||| 2024-06-25T17:22:25-07:00 |||| Update version to 3.0.8.0
+| | | * 06fc6e5d |||| 2024-06-25T17:19:52-07:00 |||| Use correct init value for timeout
+| | |/  
+| | *   a1c97275 |||| 2024-06-28T14:09:25-07:00 |||| Merge branch 'alanger/pr/fix_sysmem_ci' into 'devel'
+| | |\  
+| | | * 58b8f196 |||| 2024-06-28T14:07:42-07:00 |||| Update version to 3.0.7.2
+| | | * b467dbb1 |||| 2024-06-18T15:34:33-07:00 |||| Fix sysmem CI skip test list
+| | |/  
+| | *   4a281dd7 |||| 2024-06-26T14:48:51-07:00 |||| Merge branch 'abaran/nvshmem/perf_metrics' into 'devel'
+| | |\  
+| | | * 6a63a200 |||| 2024-06-26T14:48:51-07:00 |||| improve readability and added metrics to perftest output
+| | |/  
+| | * ec550184 |||| 2024-06-24T15:58:40-07:00 |||| Merge branch 'arnavg/nvshmem/fcollect-algo' into 'devel'
+| |/| 
+| | * 50b73f60 |||| 2024-06-24T15:58:40-07:00 |||| Add algo selection for fcollect
+| |/  
+| *   66fd88cb |||| 2024-06-18T18:03:01-07:00 |||| Merge branch 'arnavg/nvshmem/missing-cudawrap-11.0' into 'devel'
+| |\  
+| | * 09de3888 |||| 2024-06-18T17:59:12-07:00 |||| version: bump for merge back to devel.
+| | *   7f3fc350 |||| 2024-06-18T17:57:50-07:00 |||| Merge branch 'main' into arnavg/nvshmem/missing-cudawrap-11.0
+| | |\  
+| |_|/  
+|/| |   
+* | |   31641700 |||| 2024-06-18T11:52:31-07:00 |||| Merge branch 'sethh/nvshmem_3_0_6_2' into 'main'
+|\ \ \  
+| * | | cb5e81e5 |||| 2024-06-17T16:51:10-07:00 |||| version: Update to 3.0.6-2
+| |/ /  
+| | * 0d5870d9 |||| 2024-06-18T17:47:25-07:00 |||| Bump up
+| | * 7a0362cf |||| 2024-06-18T17:45:52-07:00 |||| Add missing include
+| |/  
+| *   eed0f38d |||| 2024-06-18T07:35:06-07:00 |||| Merge branch 'alanger/pr/fix_mnnvl_discovery_2' into 'devel'
+| |\  
+| | * 4db06157 |||| 2024-06-17T18:55:59-07:00 |||| in-place clang-formatting
+| | * f7db57e0 |||| 2024-06-17T18:52:42-07:00 |||| Fix typo
+| | * fc3c8af4 |||| 2024-06-17T17:56:28-07:00 |||| Fix typo
+| | * 930f934a |||| 2024-06-17T17:34:22-07:00 |||| Check if p2p list is of form (start, stride, size)
+| |/  
+| *   1e2775b5 |||| 2024-06-17T16:46:34-07:00 |||| Merge branch 'alanger/pr/fix_mnnvl_discovery_2' into 'devel'
+| |\  
+| | * 893a74bb |||| 2024-06-17T11:28:33-07:00 |||| NVSHMEM: Make MNNVL failures non-fatal.
+| | * 57bb8b93 |||| 2024-06-17T15:18:22-07:00 |||| Fix MNNVL discovery code
+| |/  
+| * 888a729e |||| 2024-06-17T14:10:57-07:00 |||| Merge branch 'pmarkthub/gpu_verbs/fix-roce-bug' into 'devel'
+| * 3924b1dc |||| 2024-06-17T09:22:26-07:00 |||| version: Update version for bug fix.
+| *   0a3b1178 |||| 2024-06-17T09:21:35-07:00 |||| Merge branch 'main' into pmarkthub/gpu_verbs/fix-roce-bug
+| |\  
+| |/  
+|/|   
+* | e710567d |||| 2024-06-13T21:32:55-07:00 |||| Merge branch 'sethh/3_0_respin_merge_main' into 'main'
+ /  
+* 4c7bdbbb |||| 2024-06-16T23:34:21-07:00 |||| Fix an IBGDA bug showing up when using RoCE because the send_cq and ah objects are inside union

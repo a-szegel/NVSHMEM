@@ -14,7 +14,7 @@
 
 #include "coll_test.h"
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 extern "C" {
 #endif
 
@@ -67,7 +67,7 @@ BARRIER_KERNEL(, , 1);
 BARRIER_KERNEL(x, _warp, warpSize);
 BARRIER_KERNEL(x, _block, INT_MAX);
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 }
 #endif
 
@@ -84,10 +84,12 @@ int barrier_calling_kernel(nvshmem_team_t team, cudaStream_t stream, int mype, v
     size_t skip = warmup_iters;
     size_t iter = iters;
     int num_blocks = 1;
+    int npes = nvshmem_n_pes();
     double *h_thread_lat = (double *)h_tables[0];
     double *h_warp_lat = (double *)h_tables[1];
     double *h_block_lat = (double *)h_tables[2];
     uint64_t size = 0;
+    uint64_t tpb_size = nvshm_test_num_tpb;
     void *barrier_args_1[] = {&team, &skip};
     void *barrier_args_2[] = {&team, &iter};
     void *barrier_all_args_1[] = {&skip};
@@ -153,11 +155,11 @@ int barrier_calling_kernel(nvshmem_team_t team, cudaStream_t stream, int mype, v
 
     if (!mype) {
         print_table_basic("barrier_device", "thread", "threads per block", "latency", "us", '-',
-                          &size, h_thread_lat, 1);
+                          &tpb_size, h_thread_lat, 1);
         print_table_basic("barrier_device", "warp", "threads per block", "latency", "us", '-',
-                          &size, h_warp_lat, 1);
+                          &tpb_size, h_warp_lat, 1);
         print_table_basic("barrier_device", "block", "threads per block", "latency", "us", '-',
-                          &size, h_block_lat, 1);
+                          &tpb_size, h_block_lat, 1);
     }
 
     nvshmem_barrier_all();
@@ -216,11 +218,11 @@ int barrier_calling_kernel(nvshmem_team_t team, cudaStream_t stream, int mype, v
 
     if (!mype) {
         print_table_basic("barrier_all_device", "thread", "threads per block", "latency", "us", '-',
-                          &size, h_thread_lat, 1);
+                          &tpb_size, h_thread_lat, 1);
         print_table_basic("barrier_all_device", "warp", "threads per block", "latency", "us", '-',
-                          &size, h_warp_lat, 1);
+                          &tpb_size, h_warp_lat, 1);
         print_table_basic("barrier_all_device", "block", "threads per block", "latency", "us", '-',
-                          &size, h_block_lat, 1);
+                          &tpb_size, h_block_lat, 1);
     }
 
     return status;

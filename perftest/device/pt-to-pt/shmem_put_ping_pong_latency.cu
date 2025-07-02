@@ -19,7 +19,7 @@
 #include <unistd.h>
 #include "utils.h"
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 extern "C" {
 #endif
 
@@ -49,7 +49,7 @@ __global__ void ping_pong(int *data_d, uint64_t *flag_d, int len, int pe, int it
     nvshmem_quiet();
 }
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 }
 #endif
 
@@ -103,10 +103,17 @@ int main(int argc, char *argv[]) {
         goto finalize;
     }
 
-    data_d = (int *)nvshmem_malloc(max_size);
-    flag_d = (uint64_t *)nvshmem_malloc(sizeof(uint64_t));
-    CUDA_CHECK(cudaMemset(data_d, 0, max_size));
-    CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(int)));
+    if (use_mmap) {
+        data_d = (int *)allocate_mmap_buffer(max_size, mem_handle_type, use_egm, true);
+        flag_d = (uint64_t *)allocate_mmap_buffer(sizeof(uint64_t), mem_handle_type, use_egm, true);
+        DEBUG_PRINT("Allocated mmap buffer\n");
+    } else {
+        data_d = (int *)nvshmem_malloc(max_size);
+        flag_d = (uint64_t *)nvshmem_malloc(sizeof(uint64_t));
+        DEBUG_PRINT("Allocated nvshmem malloc buffer\n");
+        CUDA_CHECK(cudaMemset(data_d, 0, max_size));
+        CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(int)));
+    }
 
     array_size = max_size_log;
     alloc_tables(&h_tables, 2, array_size);
@@ -132,7 +139,11 @@ int main(int argc, char *argv[]) {
         void *args_1[] = {&data_d, &flag_d, &nelems, &mype, &skip};
         void *args_2[] = {&data_d, &flag_d, &nelems, &mype, &iter};
 
-        CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(uint64_t)));
+        if (use_egm) {
+            memset(flag_d, 0, sizeof(uint64_t));
+        } else {
+            CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(uint64_t)));
+        }
         CUDA_CHECK(cudaDeviceSynchronize());
         nvshmem_barrier_all();
 
@@ -142,7 +153,11 @@ int main(int argc, char *argv[]) {
             exit(-1);
         }
         CUDA_CHECK(cudaDeviceSynchronize());
-        CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(uint64_t)));
+        if (use_egm) {
+            memset(flag_d, 0, sizeof(uint64_t));
+        } else {
+            CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(uint64_t)));
+        }
         nvshmem_barrier_all();
 
         cudaEventRecord(start, stream);
@@ -169,8 +184,20 @@ int main(int argc, char *argv[]) {
     }
 finalize:
 
-    if (data_d) nvshmem_free(data_d);
-    if (flag_d) nvshmem_free(flag_d);
+    if (data_d) {
+        if (use_mmap) {
+            free_mmap_buffer(data_d);
+        } else {
+            nvshmem_free(data_d);
+        }
+    }
+    if (flag_d) {
+        if (use_mmap) {
+            free_mmap_buffer(flag_d);
+        } else {
+            nvshmem_free(flag_d);
+        }
+    }
     free_tables(h_tables, 2);
     finalize_wrapper();
 

@@ -180,7 +180,7 @@ static int buffer_register(nvshmem_transport_t transport, void *addr, size_t len
                                      : remaining_length;
         if (NULL != transport && NVSHMEMI_TRANSPORT_OPS_IS_GET_MEM(transport)) {
             assert(register_length < NVSHMEMI_DMA_BUF_MAX_LENGTH);
-            status = transport->host_ops.get_mem_handle(handle[i].handle, NULL, (void *)addr_calc,
+            status = transport->host_ops.get_mem_handle(handle[i].handle, (void *)addr_calc,
                                                         register_length, transport, true);
             if (status) {
                 NVSHMEMI_ERROR_PRINT("Unable to assign new memory handle.\n");

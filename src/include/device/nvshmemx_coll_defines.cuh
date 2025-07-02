@@ -49,6 +49,7 @@ NVSHMEMI_REPT_FOR_STANDARD_RMA_TYPES_WITH_SCOPE2(DEFN_NVSHMEMX_TYPENAME_ALLTOALL
     }
 
 DEFN_NVSHMEMX_BARRIER_SCOPE(warp, _warp, x)
+DEFN_NVSHMEMX_BARRIER_SCOPE(warpgroup, _warpgroup, x)
 DEFN_NVSHMEMX_BARRIER_SCOPE(block, _block, x)
 #undef DEFN_NVSHMEMX_BARRIER_SCOPE
 
@@ -93,6 +94,20 @@ DEFN_NVSHMEMX_SYNC_ALL_SCOPE(block, _block, x)
         return 0;                                                                              \
     }
 
+NVSHMEMI_STATIC NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_INLINE int nvshmemx_broadcastmem_warp(
+    nvshmem_team_t team, void *dest, const void *source, size_t nelems, int PE_root) {
+    nvshmemi_broadcast_threadgroup<char, nvshmemi_threadgroup_warp>(
+        team, (char *)dest, (const char *)source, nelems, PE_root);
+    return 0;
+}
+
+NVSHMEMI_STATIC NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_INLINE int nvshmemx_broadcastmem_block(
+    nvshmem_team_t team, void *dest, const void *source, size_t nelems, int PE_root) {
+    nvshmemi_broadcast_threadgroup<char, nvshmemi_threadgroup_block>(
+        team, (char *)dest, (const char *)source, nelems, PE_root);
+    return 0;
+}
+
 NVSHMEMI_REPT_FOR_STANDARD_RMA_TYPES_WITH_SCOPE2(DEFN_NVSHMEMX_TYPENAME_BROADCAST_THREADGROUP, warp,
                                                  _warp, x)
 NVSHMEMI_REPT_FOR_STANDARD_RMA_TYPES_WITH_SCOPE2(DEFN_NVSHMEMX_TYPENAME_BROADCAST_THREADGROUP,
@@ -108,6 +123,20 @@ NVSHMEMI_REPT_FOR_STANDARD_RMA_TYPES_WITH_SCOPE2(DEFN_NVSHMEMX_TYPENAME_BROADCAS
         return 0;                                                                             \
     }
 
+NVSHMEMI_STATIC NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_INLINE int nvshmemx_fcollectmem_warp(
+    nvshmem_team_t team, void *dest, const void *source, size_t nelems) {
+    nvshmemi_fcollect_threadgroup<char, nvshmemi_threadgroup_warp>(
+        team, (char *)dest, (const char *)source, nelems * nvshmem_team_my_pe(team), nelems);
+    return 0;
+}
+
+NVSHMEMI_STATIC NVSHMEMI_DEVICE_PREFIX NVSHMEMI_DEVICE_INLINE int nvshmemx_fcollectmem_block(
+    nvshmem_team_t team, void *dest, const void *source, size_t nelems) {
+    nvshmemi_fcollect_threadgroup<char, nvshmemi_threadgroup_block>(
+        team, (char *)dest, (const char *)source, nelems * nvshmem_team_my_pe(team), nelems);
+    return 0;
+}
+
 NVSHMEMI_REPT_FOR_STANDARD_RMA_TYPES_WITH_SCOPE2(DEFN_NVSHMEMX_TYPENAME_FCOLLECT_THREADGROUP, warp,
                                                  _warp, x)
 NVSHMEMI_REPT_FOR_STANDARD_RMA_TYPES_WITH_SCOPE2(DEFN_NVSHMEMX_TYPENAME_FCOLLECT_THREADGROUP, block,
@@ -118,7 +147,7 @@ NVSHMEMI_REPT_FOR_STANDARD_RMA_TYPES_WITH_SCOPE2(DEFN_NVSHMEMX_TYPENAME_FCOLLECT
     NVSHMEMI_STATIC NVSHMEMI_DEVICE_PREFIX                                                         \
         NVSHMEMI_DEVICE_INLINE int nvshmem##SC_PREFIX##_##TYPENAME##_##OP##_reduce##SC_SUFFIX(     \
             nvshmem_team_t team, TYPE *dest, const TYPE *source, size_t nreduce) {                 \
-        nvshmemi_reduce_threadgroup<TYPE, RDXN_OPS_##OP, nvshmemi_threadgroup_##SC, 0>(            \
+        nvshmemi_reduce_threadgroup<TYPE, RDXN_OPS_##OP, nvshmemi_threadgroup_##SC>(               \
             team, dest, source, nreduce);                                                          \
         return 0;                                                                                  \
     }
@@ -187,6 +216,7 @@ nvshmemx_double2_maxloc_reduce_block(nvshmem_team_t team, double2 *dest, const d
 #if defined __cplusplus || defined __clang_llvm_bitcode_lib__
 }
 #endif
+
 #endif /* __CUDA_ARCH__ */
 
 #endif

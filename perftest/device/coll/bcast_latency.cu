@@ -15,13 +15,13 @@
 #include "coll_test.h"
 #define DATATYPE int64_t
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 extern "C" {
 #endif
 
 #define CALL_BCAST(TYPENAME, TYPE, TG_PRE, THREADGROUP, THREAD_COMP, ELEM_COMP)                    \
     __global__ void test_##TYPENAME##_bcast_call_kern##THREADGROUP(                                \
-        nvshmem_team_t team, TYPE *dest, const TYPE *source, int nelems, int PE_root, int mype,    \
+        nvshmem_team_t team, TYPE *dest, const TYPE *source, int nelems, int mype, int PE_root,    \
         int iter) {                                                                                \
         int i;                                                                                     \
                                                                                                    \
@@ -62,7 +62,7 @@ CALL_BCAST(int64, int64_t, x, _warp, warpSize, 4096);
 CALL_BCAST(int32, int32_t, x, _block, INT_MAX, INT_MAX);
 CALL_BCAST(int64, int64_t, x, _block, INT_MAX, INT_MAX);
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 }
 #endif
 
@@ -76,6 +76,7 @@ int broadcast_calling_kernel(nvshmem_team_t team, void *dest, const void *source
     int i;
     int skip = warmup_iters;
     int iter = iters;
+    int npes = nvshmem_n_pes();
     uint64_t *h_size_array = (uint64_t *)h_tables[0];
     double *h_thread_lat = (double *)h_tables[1];
     double *h_warp_lat = (double *)h_tables[2];
@@ -138,7 +139,7 @@ int broadcast_calling_kernel(nvshmem_team_t team, void *dest, const void *source
 
     i = 0;
     for (num_elems = min_elems; num_elems <= max_elems; num_elems *= step_factor) {
-        h_size_array[i] = num_elems * 4;
+        h_size_array[i] = calculate_collective_size("bcast", num_elems, sizeof(int32_t), npes);
         CALL_BCAST_KERNEL(int32, _block, num_blocks, nvshm_test_num_tpb, args_1, stream);
 
         CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -216,7 +217,7 @@ int broadcast_calling_kernel(nvshmem_team_t team, void *dest, const void *source
 
     i = 0;
     for (num_elems = min_elems; num_elems <= max_elems; num_elems *= step_factor) {
-        h_size_array[i] = num_elems * 8;
+        h_size_array[i] = calculate_collective_size("bcast", num_elems, sizeof(int64_t), npes);
         CALL_BCAST_KERNEL(int64, _block, num_blocks, nvshm_test_num_tpb, args_1, stream);
 
         CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -270,7 +271,9 @@ int main(int argc, char **argv) {
     void **h_tables;
 
     array_size = max_size_log;
-
+    if (use_mmap) {
+        size = pad_up(size) * 2;
+    }
     DEBUG_PRINT("symmetric size %lu\n", size);
     sprintf(size_string, "%lu", size);
 
@@ -300,9 +303,16 @@ int main(int argc, char **argv) {
     h_source = (DATATYPE *)h_buffer;
     h_dest = (DATATYPE *)&h_source[max_size / sizeof(DATATYPE)];
 
-    buffer = (DATATYPE *)nvshmem_malloc(alloc_size);
+    if (use_mmap) {
+        buffer = (DATATYPE *)allocate_mmap_buffer(alloc_size, mem_handle_type, use_egm);
+        DEBUG_PRINT("Allocating mmap buffer of size %zu\n", alloc_size);
+    } else {
+        buffer = (DATATYPE *)nvshmem_malloc(alloc_size);
+        DEBUG_PRINT("Allocating nvshmem malloc buffer of size %zu\n", alloc_size);
+    }
+
     if (!buffer) {
-        fprintf(stderr, "nvshmem_malloc failed \n");
+        fprintf(stderr, "buffer allocation failed \n");
         status = -1;
         goto out;
     }
@@ -325,7 +335,11 @@ int main(int argc, char **argv) {
     nvshmem_barrier_all();
 
     CUDA_CHECK(cudaFreeHost(h_buffer));
-    nvshmem_free(buffer);
+    if (use_mmap) {
+        free_mmap_buffer(buffer);
+    } else {
+        nvshmem_free(buffer);
+    }
 
     CUDA_CHECK(cudaStreamDestroy(cstrm));
     free_tables(h_tables, 4);

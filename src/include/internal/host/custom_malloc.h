@@ -13,6 +13,7 @@
 
 #include <stddef.h>  // for size_t
 #include <map>       // for map
+#include <utility>   // for pair
 
 #define NVSHMEMI_MALLOC_ALIGNMENT ((size_t)512U)
 
@@ -24,7 +25,6 @@ class mspace {
     /* in_use_cunks is a mapping of each in use chunks start address to size of the chunk */
     std::map<void *, size_t> inuse_chunks;
     size_t total_size = 0; /* size of total space managed by mspace */
-
    public:
     mspace() {}
     mspace(void *base, size_t capacity);
@@ -37,6 +37,14 @@ class mspace {
     void *allocate_zeroed(size_t n_elements, size_t elem_size);
     void *allocate_aligned(size_t alignment, size_t bytes);
     void *reallocate(void *ptr, size_t size);
+    bool checkInuse(void *ptr, size_t size);
+    void *get_startInusePtr() {
+        if (inuse_chunks.empty()) {
+            return NULL;
+        }
+        return inuse_chunks.begin()->first;
+    }
+    std::map<void *, size_t> *get_inuse_chunks() { return &inuse_chunks; }
 };
 
 #endif

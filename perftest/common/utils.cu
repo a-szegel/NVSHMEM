@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <sstream>
 #include <vector>
+#include <unordered_map>
 #include <tuple>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,7 +36,6 @@ int use_mpi = 0;
 int use_shmem = 0;
 int use_uid = 0;
 bool use_cubin = false;
-__device__ int clockrate;
 
 CUmodule mymodule = NULL;
 
@@ -69,7 +69,7 @@ void init_test_case_kernel(CUfunction *kernel, const char *kernel_name) {
 
 void *nvshmemi_shmem_handle = NULL;
 struct nvshmemi_shmem_fn_table shmem_fn_table = {0};
-static uint64_t getHostHash() {
+static uint64_t nvshmemiu_getHostHash() {
     char hostname[1024];
     uint64_t result = 5381;
     int status = 0;
@@ -101,7 +101,7 @@ void select_device_shmem() {
     n_pes = shmem_fn_table.fn_shmem_n_pes();
     mype_node = 0;
 
-    host = getHostHash();
+    host = nvshmemiu_getHostHash();
     hosts = (uint64_t *)shmem_fn_table.fn_shmem_malloc(sizeof(uint64_t) * (n_pes + 1));
     hosts[0] = host;
 
@@ -117,10 +117,8 @@ void select_device_shmem() {
     CUDA_CHECK(cudaSetDevice(mype_node % dev_count));
 
     CUDA_CHECK(cudaGetDeviceProperties(&prop, mype_node % dev_count));
-    fprintf(stderr, "mype: %d mype_node: %d device name: %s bus id: %d \n", mype, mype_node,
+    fprintf(stdout, "mype: %d mype_node: %d device name: %s bus id: %d \n", mype, mype_node,
             prop.name, prop.pciBusID);
-    CUDA_CHECK(cudaMemcpyToSymbol(clockrate, (void *)&prop.clockRate, sizeof(int), 0,
-                                  cudaMemcpyHostToDevice));
 }
 #endif
 
@@ -223,10 +221,8 @@ void select_device() {
     CUDA_CHECK(cudaSetDevice(mype_node % dev_count));
 
     CUDA_CHECK(cudaGetDeviceProperties(&prop, mype_node % dev_count));
-    fprintf(stderr, "mype: %d mype_node: %d device name: %s bus id: %d \n", mype, mype_node,
+    fprintf(stdout, "mype: %d mype_node: %d device name: %s bus id: %d \n", mype, mype_node,
             prop.name, prop.pciBusID);
-    CUDA_CHECK(cudaMemcpyToSymbol(clockrate, (void *)&prop.clockRate, sizeof(int), 0,
-                                  cudaMemcpyHostToDevice));
 }
 
 static void check_for_cumodule_tests() {
@@ -375,263 +371,6 @@ void finalize_wrapper() {
 #endif
 }
 
-void alloc_tables(void ***table_mem, int num_tables, int num_entries_per_table) {
-    void **tables;
-    int i, dev_property;
-    int dev_count;
-
-    CUDA_CHECK(cudaGetDeviceCount(&dev_count));
-    int mype_node = nvshmem_team_my_pe(NVSHMEMX_TEAM_NODE);
-    CUDA_CHECK(
-        cudaDeviceGetAttribute(&dev_property, cudaDevAttrUnifiedAddressing, mype_node % dev_count));
-    assert(dev_property == 1);
-
-    assert(num_tables >= 1);
-    assert(num_entries_per_table >= 1);
-    CUDA_CHECK(cudaHostAlloc(table_mem, num_tables * sizeof(void *), cudaHostAllocMapped));
-    tables = *table_mem;
-
-    /* Just allocate an array of 8 byte values. The user can decide if they want to use double or
-     * uint64_t */
-    for (i = 0; i < num_tables; i++) {
-        CUDA_CHECK(
-            cudaHostAlloc(&tables[i], num_entries_per_table * sizeof(double), cudaHostAllocMapped));
-        memset(tables[i], 0, num_entries_per_table * sizeof(double));
-    }
-}
-
-void free_tables(void **tables, int num_tables) {
-    int i;
-    for (i = 0; i < num_tables; i++) {
-        CUDA_CHECK(cudaFreeHost(tables[i]));
-    }
-    CUDA_CHECK(cudaFreeHost(tables));
-}
-
-uint64_t get_coll_info(double *algBw, double *busBw, const char *job_name, uint64_t size,
-                       double usec, int npes) {
-    double baseBw, factor;
-    // size == count * typesize
-    // convert to seconds
-    double sec = usec / 1.0E6;
-    uint64_t total_bytes = 0;
-
-    if (strcmp(job_name, "reduction") == 0 || strcmp(job_name, "reduction_on_stream") == 0 ||
-        strcmp(job_name, "device_reduction") == 0) {
-        baseBw = (double)(size) / 1.0E9 / sec;
-        factor = ((double)2 * (npes - 1)) / ((double)(npes));
-        total_bytes = size;
-    } else if (strcmp(job_name, "broadcast") == 0 || strcmp(job_name, "broadcast_on_stream") == 0 ||
-               strcmp(job_name, "bcast_device") == 0) {
-        baseBw = (double)(size) / 1.0E9 / sec;
-        factor = 1;
-        total_bytes = size;
-    } else if (strcmp(job_name, "alltoall") == 0 || strcmp(job_name, "alltoall_on_stream") == 0 ||
-               strcmp(job_name, "alltoall_device") == 0 || strcmp(job_name, "fcollect") == 0 ||
-               strcmp(job_name, "fcollect_on_stream") == 0 ||
-               strcmp(job_name, "fcollect_device") == 0 || strcmp(job_name, "reducescatter") == 0 ||
-               strcmp(job_name, "reducescatter_on_stream") == 0 ||
-               strcmp(job_name, "device_reducescatter") == 0) {
-        baseBw = (double)(size) / 1.0E9 / sec;
-        factor = ((double)(npes - 1)) / ((double)(npes));
-        total_bytes = size;
-    } else {
-        printf("Job Name %s bandwidth factor not set. Using 1 values for bw.\n", job_name);
-        *algBw = 1;
-        *busBw = 1;
-        return size;
-    }
-    *algBw = baseBw;
-    *busBw = baseBw * factor;
-    return total_bytes;
-}
-
-tuple<double, double, double> get_latency_metrics(double *values, int num_values) {
-    double min, max, sum;
-    int i = 0;
-    min = max = values[0];
-    sum = 0.0;
-
-    while (i < num_values) {
-        auto v = values[i];
-        if (v < min) {
-            min = v;
-        }
-        if (v > max) {
-            max = v;
-        }
-        sum += v;
-        i++;
-    }
-    double avg = (double)sum / num_values;
-    return make_tuple(avg, min, max);
-}
-
-void print_table_basic(const char *job_name, const char *subjob_name, const char *var_name,
-                       const char *output_var, const char *units, const char plus_minus,
-                       uint64_t *size, double *value, int num_entries) {
-    bool machine_readable = false;
-    char buffer[256] = {0};
-    char *env_value = getenv("NVSHMEM_MACHINE_READABLE_OUTPUT");
-    if (env_value) machine_readable = atoi(env_value);
-    int i;
-
-    if (machine_readable) {
-        printf("%s\n", job_name);
-        for (i = 0; i < num_entries; i++) {
-            if (size[i] != 0 && value[i] != 0.00) {
-                printf("&&&& PERF %s___%s___size__%lu___%s %lf %c%s\n", job_name, subjob_name,
-                       size[i], output_var, value[i], plus_minus, units);
-            }
-        }
-    } else {
-        printf("#%10s\n", job_name);
-        snprintf(buffer, 256, "%s (%s)", output_var, units);
-        printf("%-10s  %-8s  %-16s\n", "size(B)", "scope", buffer);
-        for (i = 0; i < num_entries; i++) {
-            if (size[i] != 0 && value[i] != 0.00) {
-                printf("%-10lu  %-8s  %-16.6lf", size[i], subjob_name, value[i]);
-                printf("\n");
-            }
-        }
-    }
-}
-
-void print_table_v1(const char *job_name, const char *subjob_name, const char *var_name,
-                    const char *output_var, const char *units, const char plus_minus,
-                    uint64_t *size, double *value, int num_entries) {
-    bool machine_readable = false;
-    char *env_value = getenv("NVSHMEM_MACHINE_READABLE_OUTPUT");
-    if (env_value) machine_readable = atoi(env_value);
-    int i;
-
-    int npes = nvshmem_n_pes();
-    double avg, algbw, busbw;
-
-    char **tokens = (char **)malloc(3 * sizeof(char *));
-    const char *delim = "-";
-    char copy[strlen(subjob_name) + 1];
-    strcpy(copy, subjob_name);
-    char *token = strtok(copy, delim);
-    i = 0;
-    while (token != NULL) {
-        tokens[i] = strdup(token);
-        token = strtok(NULL, delim);
-        i++;
-    }
-    /* Used for automated test output. It outputs the data in a non human-friendly format. */
-    if (machine_readable) {
-        printf("%s\n", job_name);
-        for (i = 0; i < num_entries; i++) {
-            if (size[i] != 0 && value[i] != 0.00) {
-                printf("&&&& PERF %s___%s___size__%lu___%s %lf %c%s\n", job_name, subjob_name,
-                       size[i], output_var, value[i], plus_minus, units);
-            }
-        }
-    } else if (strcmp(job_name, "device_reduction") == 0 ||
-               strcmp(job_name, "device_reducescatter") == 0) {
-        printf("#%10s\n", job_name);
-        printf("%-10s  %-8s  %-8s  %-8s  %-16s  %-12s  %-12s\n", "size(B)", "type", "redop",
-               "scope", "latency(us)", "algbw(GB/s)", "busbw(GB/s)");
-        for (i = 0; i < num_entries; i++) {
-            if (size[i] != 0 && value[i] != 0.00) {
-                avg = value[i];
-                uint64_t total_bytes = get_coll_info(&algbw, &busbw, job_name, size[i], avg, npes);
-                printf("%-10lu  %-8s  %-8s  %-8s  %-16.6lf  %-12.3lf  %-12.3lf", total_bytes,
-                       tokens[0], tokens[1], tokens[2], avg, algbw, busbw);
-                printf("\n");
-            }
-        }
-
-    } else {
-        // recombine first two tokens of subjob_name
-        char type[strlen(subjob_name)];
-        strcpy(type, subjob_name);
-        char *last_delim = strrchr(type, '-');
-        if (last_delim != NULL) *last_delim = '\0';
-        printf("#%10s\n", job_name);
-        printf("%-10s  %-8s  %-8s  %-16s  %-12s  %-12s\n", "size(B)", "type", "scope",
-               "latency(us)", "algbw(GB/s)", "busbw(GB/s)");
-        for (i = 0; i < num_entries; i++) {
-            if (size[i] != 0 && value[i] != 0.00) {
-                avg = value[i];
-                uint64_t total_bytes = get_coll_info(&algbw, &busbw, job_name, size[i], avg, npes);
-                printf("%-10lu  %-8s  %-8s  %-16.6lf  %-12.3lf  %-12.3lf", total_bytes, type,
-                       tokens[2], avg, algbw, busbw);
-                printf("\n");
-            }
-        }
-    }
-}
-
-void print_table_v2(const char *job_name, const char *subjob_name, const char *var_name,
-                    const char *output_var, const char *units, const char plus_minus,
-                    uint64_t *size, double **values, int num_entries, size_t num_iters) {
-    bool machine_readable = false;
-    char *env_value = getenv("NVSHMEM_MACHINE_READABLE_OUTPUT");
-    if (env_value) machine_readable = atoi(env_value);
-    int i;
-
-    int npes = nvshmem_n_pes();
-    double avg, min, max, algbw, busbw = 0;
-
-    /* Used for automated test output. It outputs the data in a non human-friendly format. */
-    if (machine_readable) {
-        printf("%s\n", job_name);
-        for (i = 0; i < num_entries; i++) {
-            auto value = values[i];
-            tie(avg, min, max) = get_latency_metrics(value, num_iters);
-            if (size[i] != 0 && value[0] != 0.00) {
-                printf("&&&& PERF %s___%s___size__%lu___%s %lf %c%s\n", job_name, subjob_name,
-                       size[i], output_var, avg, plus_minus, units);
-            }
-        }
-    } else if (strcmp(job_name, "reduction") == 0) {
-        /* Splits subjob_name into data type and operation name */
-        char **tokens = (char **)malloc(2 * sizeof(char *));
-        const char *delim = "-";
-        char copy[strlen(subjob_name) + 1];
-        strcpy(copy, subjob_name);
-        char *token = strtok(copy, delim);
-        if (token != NULL) {
-            tokens[0] = strdup(token);
-            token = strtok(NULL, delim);
-            if (token != NULL) {
-                tokens[1] = strdup(token);
-            } else {
-                tokens[1] = strdup("None");
-            }
-        }
-        printf("#%10s\n", job_name);
-        printf("%-10s  %-8s  %-8s  %-16s  %-16s  %-16s  %-12s  %-12s\n", "size(B)", "type", "redop",
-               "latency(us)", "min_lat(us)", "max_lat(us)", "algbw(GB/s)", "busbw(GB/s)");
-        for (i = 0; i < num_entries; i++) {
-            auto value = values[i];
-            if (size[i] != 0 && value[0] != 0.00) {
-                tie(avg, min, max) = get_latency_metrics(value, num_iters);
-                uint64_t total_bytes = get_coll_info(&algbw, &busbw, job_name, size[i], avg, npes);
-                printf("%-10.1lu  %-8s  %-8s  %-16.6lf  %-16.3lf  %-16.3lf  %-12.3lf  %-12.3lf",
-                       total_bytes, tokens[0], tokens[1], avg, min, max, algbw, busbw);
-                printf("\n");
-            }
-        }
-    } else {
-        printf("#%10s\n", job_name);
-        printf("%-10s  %-8s  %-16s  %-16s  %-16s  %-12s  %-12s\n", "size(B)", "type", "latency(us)",
-               "min_lat(us)", "max_lat(us)", "algbw(GB/s)", "busbw(GB/s)");
-        for (i = 0; i < num_entries; i++) {
-            auto value = values[i];
-            if (size[i] != 0 && value[0] != 0.00) {
-                tie(avg, min, max) = get_latency_metrics(value, num_iters);
-                uint64_t total_bytes = get_coll_info(&algbw, &busbw, job_name, size[i], avg, npes);
-                printf("%-10.1lu  %-8s  %-16.6lf  %-16.3lf  %-16.3lf  %-12.3lf  %-12.3lf",
-                       total_bytes, subjob_name, avg, min, max, algbw, busbw);
-                printf("\n");
-            }
-        }
-    }
-}
-
 void datatype_parse(char *optarg, datatype_t *datatype) {
     if (!strcmp(optarg, "int")) {
         datatype->type = NVSHMEM_INT;
@@ -657,7 +396,7 @@ void datatype_parse(char *optarg, datatype_t *datatype) {
         datatype->type = NVSHMEM_PTRDIFF;
         datatype->size = sizeof(ptrdiff_t);
         datatype->name = "ptrdiff";
-    } else if (!strcmp(optarg, "float")) {
+    } else if (strstr(optarg, "float")) {
         datatype->type = NVSHMEM_FLOAT;
         datatype->size = sizeof(float);
         datatype->name = "float";
@@ -685,7 +424,7 @@ void datatype_parse(char *optarg, datatype_t *datatype) {
         datatype->type = NVSHMEM_UINT64;
         datatype->size = sizeof(uint64_t);
         datatype->name = "uint64";
-    } else if (!strcmp(optarg, "fp16")) {
+    } else if (strstr(optarg, "fp16")) {
         datatype->type = NVSHMEM_FP16;
         datatype->size = sizeof(half);
         datatype->name = "fp16";
@@ -806,6 +545,311 @@ static inline int atol_scaled(const char *str, size_t *out) {
     return 0;
 }
 
+void alloc_tables(void ***table_mem, int num_tables, int num_entries_per_table) {
+    void **tables;
+    int i, dev_property;
+    int dev_count;
+
+    CUDA_CHECK(cudaGetDeviceCount(&dev_count));
+    int mype_node = nvshmem_team_my_pe(NVSHMEMX_TEAM_NODE);
+    CUDA_CHECK(
+        cudaDeviceGetAttribute(&dev_property, cudaDevAttrUnifiedAddressing, mype_node % dev_count));
+    assert(dev_property == 1);
+
+    assert(num_tables >= 1);
+    assert(num_entries_per_table >= 1);
+    CUDA_CHECK(cudaHostAlloc(table_mem, num_tables * sizeof(void *), cudaHostAllocMapped));
+    tables = *table_mem;
+
+    /* Just allocate an array of 8 byte values. The user can decide if they want to use double or
+     * uint64_t */
+    for (i = 0; i < num_tables; i++) {
+        CUDA_CHECK(
+            cudaHostAlloc(&tables[i], num_entries_per_table * sizeof(double), cudaHostAllocMapped));
+        memset(tables[i], 0, num_entries_per_table * sizeof(double));
+    }
+}
+
+void free_tables(void **tables, int num_tables) {
+    int i;
+    for (i = 0; i < num_tables; i++) {
+        CUDA_CHECK(cudaFreeHost(tables[i]));
+    }
+    CUDA_CHECK(cudaFreeHost(tables));
+}
+
+void get_coll_info(double *algBw, double *busBw, const char *job_name, double usec, int npes,
+                   uint64_t size) {
+    double factor;
+    // convert to seconds
+    double sec = usec / 1.0E6;
+
+    if (strcmp(job_name, "reduction") == 0 || strcmp(job_name, "reduction_on_stream") == 0 ||
+        strcmp(job_name, "device_reduction") == 0) {
+        factor = ((double)2 * (npes - 1)) / ((double)(npes));
+    } else if (strcmp(job_name, "broadcast") == 0 || strcmp(job_name, "broadcast_on_stream") == 0 ||
+               strcmp(job_name, "bcast_device") == 0) {
+        factor = 1;
+    } else if (strcmp(job_name, "alltoall") == 0 || strcmp(job_name, "alltoall_on_stream") == 0 ||
+               strcmp(job_name, "alltoall_device") == 0 || strcmp(job_name, "fcollect") == 0 ||
+               strcmp(job_name, "fcollect_on_stream") == 0 ||
+               strcmp(job_name, "fcollect_device") == 0 || strcmp(job_name, "reducescatter") == 0 ||
+               strcmp(job_name, "reducescatter_on_stream") == 0 ||
+               strcmp(job_name, "device_reducescatter") == 0) {
+        factor = ((double)(npes - 1)) / ((double)(npes));
+    } else {
+        printf("Job Name %s bandwidth factor not set. Using 1 values for bw.\n", job_name);
+        *algBw = 1;
+        *busBw = 1;
+        return;
+    }
+
+    *algBw = (double)(size) / 1.0E9 / sec;
+    *busBw = *algBw * factor;
+}
+
+uint64_t calculate_collective_size(const char *coll_name, uint64_t num_elems, uint64_t type_size,
+                                   int npes) {
+    if (!coll_name) {
+        printf("WARNING: NULL collective operation name, using default size calculation\n");
+        return num_elems * type_size;
+    }
+
+    uint64_t size = num_elems * type_size;
+
+    // Handle collective operations that scale with npes
+    if (strstr(coll_name, "alltoall") || strstr(coll_name, "fcollect") ||
+        strstr(coll_name, "reducescatter")) {
+        size *= npes;
+    }
+
+    DEBUG_PRINT("Collective: %s, Elements: %lu, Type size: %lu, PEs: %d, Total size: %lu\n",
+                coll_name, num_elems, type_size, npes, size);
+
+    return size;
+}
+
+tuple<double, double, double> get_latency_metrics(double *values, int num_values) {
+    double min, max, sum;
+    int i = 0;
+    min = max = values[0];
+    sum = 0.0;
+    int num_zeroes = 0;
+
+    while (i < num_values) {
+        if (values[i] == 0) {
+            i++;
+            num_zeroes++;
+            continue;
+        }
+
+        auto v = values[i];
+        if (v < min) {
+            min = v;
+        }
+        if (v > max) {
+            max = v;
+        }
+        sum += v;
+        i++;
+    }
+    // Don't count if they are zero
+    double avg = (double)sum / (num_values - num_zeroes);
+    return make_tuple(avg, min, max);
+}
+
+void print_table_basic(const char *job_name, const char *subjob_name, const char *var_name,
+                       const char *output_var, const char *units, const char plus_minus,
+                       uint64_t *size, double *value, int num_entries) {
+    bool machine_readable = false;
+    char buffer[256] = {0};
+    char *env_value = getenv("NVSHMEM_MACHINE_READABLE_OUTPUT");
+    if (env_value) machine_readable = atoi(env_value);
+    int i;
+
+    if (machine_readable) {
+        printf("%s\n", job_name);
+        for (i = 0; i < num_entries; i++) {
+            if (size[i] != 0 && value[i] != 0.00) {
+                printf("&&&& PERF %s___%s___size__%lu___%s %lf %c%s\n", job_name, subjob_name,
+                       size[i], output_var, value[i], plus_minus, units);
+            }
+        }
+    } else {
+        printf("#%10s\n", job_name);
+        snprintf(buffer, 256, "%s (%s)", output_var, units);
+        printf("%-10s  %-8s  %-16s\n", "size(B)", "scope", buffer);
+        for (i = 0; i < num_entries; i++) {
+            if (size[i] != 0 && value[i] != 0.00) {
+                printf("%-10lu  %-8s  %-16.6lf", size[i], subjob_name, value[i]);
+                printf("\n");
+            }
+        }
+    }
+}
+
+void print_table_v1(const char *job_name, const char *subjob_name, const char *var_name,
+                    const char *output_var, const char *units, const char plus_minus,
+                    uint64_t *size, double *value, int num_entries) {
+    bool machine_readable = false;
+    char *env_value = getenv("NVSHMEM_MACHINE_READABLE_OUTPUT");
+    if (env_value) machine_readable = atoi(env_value);
+    int i;
+
+    int npes = nvshmem_n_pes();
+    double avg, algbw, busbw;
+
+    char **tokens = (char **)malloc(3 * sizeof(char *));
+    const char *delim = "-";
+    char copy[strlen(subjob_name) + 1];
+    strcpy(copy, subjob_name);
+    char *token = strtok(copy, delim);
+    i = 0;
+    while (token != NULL) {
+        tokens[i] = strdup(token);
+        token = strtok(NULL, delim);
+        i++;
+    }
+
+    int datatype_size = 4;
+    if (strstr(subjob_name, "32-bit")) {
+        datatype_size = 4;
+    } else if (strstr(subjob_name, "64-bit")) {
+        datatype_size = 8;
+    } else {
+        datatype_t datatype = {NVSHMEM_INT, 4, "int"};
+        datatype_parse(tokens[0], &datatype);
+        datatype_size = datatype.size;
+    }
+
+    /* Used for automated test output. It outputs the data in a non human-friendly format. */
+    if (machine_readable) {
+        printf("%s\n", job_name);
+        for (i = 0; i < num_entries; i++) {
+            if (size[i] != 0 && value[i] != 0.00) {
+                printf("&&&& PERF %s___%s___size__%lu___%s %lf %c%s\n", job_name, subjob_name,
+                       size[i], output_var, value[i], plus_minus, units);
+            }
+        }
+    } else if (strcmp(job_name, "device_reduction") == 0 ||
+               strcmp(job_name, "device_reducescatter") == 0) {
+        printf("#%10s\n", job_name);
+        printf("%-10s  %-8s  %-8s  %-8s  %-8s  %-16s  %-12s  %-12s\n", "size(B)", "count", "type",
+               "redop", "scope", "latency(us)", "algbw(GB/s)", "busbw(GB/s)");
+        for (i = 0; i < num_entries; i++) {
+            if (size[i] != 0 && value[i] != 0.00) {
+                avg = value[i];
+                get_coll_info(&algbw, &busbw, job_name, avg, npes, size[i]);
+                printf("%-10lu  %-8lu  %-8s  %-8s  %-8s  %-16.6lf  %-12.3lf  %-12.3lf", size[i],
+                       (size[i] / datatype_size), tokens[0], tokens[1], tokens[2], avg, algbw,
+                       busbw);
+                printf("\n");
+            }
+        }
+
+    } else {
+        // recombine first two tokens of subjob_name
+        char type[50];  // setting size based on strlen caused buffer overflow
+        strcpy(type, subjob_name);
+        char *last_delim = strrchr(type, '-');
+        if (last_delim != NULL) *last_delim = '\0';
+        printf("#%10s\n", job_name);
+        printf("%-10s  %-8s  %-8s  %-8s  %-16s  %-12s  %-12s\n", "size(B)", "count", "type",
+               "scope", "latency(us)", "algbw(GB/s)", "busbw(GB/s)");
+        for (i = 0; i < num_entries; i++) {
+            if (size[i] != 0 && value[i] != 0.00) {
+                avg = value[i];
+                get_coll_info(&algbw, &busbw, job_name, avg, npes, size[i]);
+                printf("%-10lu  %-8lu  %-8s  %-8s  %-16.6lf  %-12.3lf  %-12.3lf", size[i],
+                       (size[i] / datatype_size), type, tokens[2], avg, algbw, busbw);
+                printf("\n");
+            }
+        }
+    }
+}
+
+void print_table_v2(const char *job_name, const char *subjob_name, const char *var_name,
+                    const char *output_var, const char *units, const char plus_minus,
+                    uint64_t *size, double **values, int num_entries, size_t num_iters) {
+    bool machine_readable = false;
+    char *env_value = getenv("NVSHMEM_MACHINE_READABLE_OUTPUT");
+    if (env_value) machine_readable = atoi(env_value);
+    int i;
+
+    int npes = nvshmem_n_pes();
+    double avg, min, max, algbw, busbw = 0;
+
+    /* Used for automated test output. It outputs the data in a non human-friendly format. */
+    if (machine_readable) {
+        printf("%s\n", job_name);
+        for (i = 0; i < num_entries; i++) {
+            auto value = values[i];
+            tie(avg, min, max) = get_latency_metrics(value, num_iters);
+            if (size[i] != 0 && value[0] != 0.00) {
+                printf("&&&& PERF %s___%s___size__%lu___%s %lf %c%s\n", job_name, subjob_name,
+                       size[i], output_var, avg, plus_minus, units);
+            }
+        }
+    } else if (strcmp(job_name, "reduction_on_stream") == 0 ||
+               strcmp(job_name, "reducescatter_on_stream") == 0) {
+        /* Splits subjob_name into data type and operation name */
+        char **tokens = (char **)malloc(2 * sizeof(char *));
+        const char *delim = "-";
+        char copy[strlen(subjob_name) + 1];
+        strcpy(copy, subjob_name);
+        char *token = strtok(copy, delim);
+        if (token != NULL) {
+            tokens[0] = strdup(token);
+            token = strtok(NULL, delim);
+            if (token != NULL) {
+                tokens[1] = strdup(token);
+            } else {
+                tokens[1] = strdup("None");
+            }
+        } else {
+            tokens[0] = strdup("None");
+            tokens[1] = strdup("None");
+        }
+        datatype_t datatype = {NVSHMEM_INT, 4, "int"};
+        datatype_parse(tokens[0], &datatype);
+        printf("#%10s\n", job_name);
+        printf("%-10s  %-8s  %-8s  %-8s  %-16s  %-16s  %-16s  %-12s  %-12s\n", "size(B)", "count",
+               "type", "redop", "latency(us)", "min_lat(us)", "max_lat(us)", "algbw(GB/s)",
+               "busbw(GB/s)");
+        for (i = 0; i < num_entries; i++) {
+            auto value = values[i];
+            if (size[i] != 0 && value[0] != 0.00) {
+                tie(avg, min, max) = get_latency_metrics(value, num_iters);
+                get_coll_info(&algbw, &busbw, job_name, avg, npes, size[i]);
+                printf(
+                    "%-10.1lu  %-8lu  %-8s  %-8s  %-16.6lf  %-16.3lf  %-16.3lf  %-12.3lf  %-12.3lf",
+                    size[i], size[i] / datatype.size, datatype.name.c_str(), tokens[1], avg, min,
+                    max, algbw, busbw);
+                printf("\n");
+            }
+        }
+    } else {
+        datatype_t datatype = {NVSHMEM_INT, 4, "int"};
+        char copy[strlen(subjob_name) + 1];
+        strcpy(copy, subjob_name);
+        datatype_parse(copy, &datatype);
+        printf("#%10s\n", job_name);
+        printf("%-10s  %-8s  %-8s  %-16s  %-16s  %-16s  %-12s  %-12s\n", "size(B)", "count", "type",
+               "latency(us)", "min_lat(us)", "max_lat(us)", "algbw(GB/s)", "busbw(GB/s)");
+        for (i = 0; i < num_entries; i++) {
+            auto value = values[i];
+            if (size[i] != 0 && value[0] != 0.00) {
+                tie(avg, min, max) = get_latency_metrics(value, num_iters);
+                get_coll_info(&algbw, &busbw, job_name, avg, npes, size[i]);
+                printf("%-10.1lu  %-8lu  %-8s  %-16.6lf  %-16.3lf  %-16.3lf  %-12.3lf  %-12.3lf",
+                       size[i], size[i] / datatype.size, datatype.name.c_str(), avg, min, max,
+                       algbw, busbw);
+                printf("\n");
+            }
+        }
+    }
+}
+
 size_t min_size = 4;
 size_t max_size = min_size * 1024 * 1024;
 size_t num_blocks = 32;
@@ -815,8 +859,13 @@ size_t warmup_iters = 5;
 size_t step_factor = 2;
 size_t max_size_log = 1;
 size_t stride = 1;
+size_t mem_handle_type = MEM_TYPE_AUTO;
 bool bidirectional = false;
 bool report_msgrate = false;
+bool use_graph = false;
+bool use_mmap = false;
+bool use_egm = false;
+
 datatype_t datatype = {NVSHMEM_INT, 4, "int"};
 reduce_op_t reduce_op = {NVSHMEM_SUM, "sum"};
 threadgroup_scope_t threadgroup_scope = {NVSHMEM_ALL_SCOPES, "all_scopes"};
@@ -824,12 +873,22 @@ amo_t test_amo = {AMO_INC, "inc"};
 putget_issue_t putget_issue = {ON_STREAM, "on_stream"};
 dir_t dir = {WRITE, "write"};
 
+// tracks mmap addr -> {user buff, size, handle}
+std::unordered_map<void *, std::tuple<void *, size_t, CUmemGenericAllocationHandle>> mmaped_buffers;
+
+void *nvml_handle = nullptr;
+struct nvml_function_table nvml_ftable;
+const char *env_value = nullptr;
+
 void read_args(int argc, char **argv) {
     int c;
     static struct option long_options[] = {{"bidir", no_argument, 0, 0},
                                            {"report_msgrate", no_argument, 0, 0},
+                                           {"cudagraph", no_argument, 0, 0},
                                            {"dir", required_argument, 0, 0},
                                            {"issue", required_argument, 0, 0},
+                                           {"mmap", no_argument, 0, 0},
+                                           {"egm", no_argument, 0, 0},
                                            {"help", no_argument, 0, 'h'},
                                            {"min_size", required_argument, 0, 'b'},
                                            {"max_size", required_argument, 0, 'e'},
@@ -843,10 +902,11 @@ void read_args(int argc, char **argv) {
                                            {"scope", required_argument, 0, 's'},
                                            {"atomic_op", required_argument, 0, 'a'},
                                            {"stride", required_argument, 0, 'i'},
+                                           {"mem_handle_type", required_argument, 0, 'm'},
                                            {0, 0, 0, 0}};
     /* getopt_long stores the option index here. */
     int option_index = 0;
-    while ((c = getopt_long(argc, argv, "hb:e:f:n:w:c:t:d:o:s:a:i:", long_options,
+    while ((c = getopt_long(argc, argv, "hb:e:f:n:w:c:t:d:o:s:a:i:m:", long_options,
                             &option_index)) != -1) {
         switch (c) {
             case 'h':
@@ -872,7 +932,11 @@ void read_args(int argc, char **argv) {
                     "--bidir: run bidirectional test \n"
                     "--msgrate: report message rate (MMPs)\n"
                     "--dir: <read, write> (whether to run put or get operations) \n"
-                    "--issue: <on_stream, host> (applicable in some host pt-to-pt tests) \n");
+                    "--issue: <on_stream, host> (applicable in some host pt-to-pt tests) \n"
+                    "--mmap (Use mmaped buffer) \n"
+                    "--egm (Use EGM memory for mmaped buffer) \n"
+                    "-m, --mem_handle_type: <0:auto, 1:posix_fd, 2:fabric> (for mmaped buffer) \n"
+                    "--cudagraph (Use CUDA graph to amortize launch overhead) \n");
                 exit(0);
             case 0:
                 if (strcmp(long_options[option_index].name, "bidir") == 0) {
@@ -895,6 +959,12 @@ void read_args(int argc, char **argv) {
                         putget_issue.type = HOST;
                         putget_issue.name = "host";
                     }
+                } else if (strcmp(long_options[option_index].name, "cudagraph") == 0) {
+                    use_graph = true;
+                } else if (strcmp(long_options[option_index].name, "mmap") == 0) {
+                    use_mmap = true;
+                } else if (strcmp(long_options[option_index].name, "egm") == 0) {
+                    use_egm = true;
                 }
                 break;
             case 'b':
@@ -917,6 +987,9 @@ void read_args(int argc, char **argv) {
                 break;
             case 't':
                 atol_scaled(optarg, &threads_per_block);
+                break;
+            case 'm':
+                atol_scaled(optarg, &mem_handle_type);
                 break;
             case 'i':
                 atol_scaled(optarg, &stride);
@@ -968,12 +1041,241 @@ void read_args(int argc, char **argv) {
         "min_size: %zu, max_size: %zu, step_factor: %zu, iterations: %zu, warmup iterations: %zu, "
         "number of ctas: %zu, threads per cta: %zu "
         "stride: %zu, datatype: %s, reduce_op: %s, threadgroup_scope: %s, atomic_op: %s, dir: %s, "
-        "report_msgrate: %d, bidirectional: %d, putget_issue :%s\n",
+        "report_msgrate: %d, bidirectional: %d, putget_issue :%s, use_graph: %d, use_mmap: %d, "
+        "mem_handle_type: %zu, use_egm: %d\n",
         min_size, max_size, step_factor, iters, warmup_iters, num_blocks, threads_per_block, stride,
         datatype.name.c_str(), reduce_op.name.c_str(), threadgroup_scope.name.c_str(),
         test_amo.name.c_str(), dir.name.c_str(), report_msgrate, bidirectional,
-        putget_issue.name.c_str());
+        putget_issue.name.c_str(), use_graph, use_mmap, mem_handle_type, use_egm);
     printf(
         "Note: Above is full list of options, any given test will use only a subset of these "
         "variables.\n");
+}
+
+#define LOAD_SYM(handle, symbol, funcptr, optional, ret)        \
+    do {                                                        \
+        void **cast = (void **)&funcptr;                        \
+        void *tmp = dlsym(handle, symbol);                      \
+        *cast = tmp;                                            \
+        if (*cast == NULL && !optional) {                       \
+            NVSHMEMI_ERROR_PRINT("Retrieve %s failed", symbol); \
+            ret = NVSHMEMX_ERROR_INTERNAL;                      \
+        }                                                       \
+    } while (0)
+
+int nvshmemi_nvml_ftable_init(struct nvml_function_table *nvml_ftable, void **nvml_handle) {
+    int status = 0;
+    char path[1024];
+    env_value = (const char *)getenv("NVSHMEM_CUDA_PATH");
+    if (!env_value)
+        snprintf(path, 1024, "%s", "libnvidia-ml.so.1");
+    else
+        snprintf(path, 1024, "%s/%s", env_value, "libnvidia-ml.so.1");
+
+    *nvml_handle = dlopen(path, RTLD_NOW);
+    if (!(*nvml_handle)) {
+        DEBUG_PRINT("NVML library not found. %s", path);
+        status = -1;
+    } else {
+        DEBUG_PRINT("NVML library found. %s", path);
+        LOAD_SYM(*nvml_handle, "nvmlInit", nvml_ftable->nvmlInit, 0, status);
+        LOAD_SYM(*nvml_handle, "nvmlShutdown", nvml_ftable->nvmlShutdown, 0, status);
+        LOAD_SYM(*nvml_handle, "nvmlDeviceGetHandleByPciBusId",
+                 nvml_ftable->nvmlDeviceGetHandleByPciBusId, 0, status);
+        LOAD_SYM(*nvml_handle, "nvmlDeviceGetP2PStatus", nvml_ftable->nvmlDeviceGetP2PStatus, 0,
+                 status);
+        LOAD_SYM(*nvml_handle, "nvmlDeviceGetGpuFabricInfoV",
+                 nvml_ftable->nvmlDeviceGetGpuFabricInfoV, 1, status);
+    }
+
+    if (status != 0) {
+        nvshmemi_nvml_ftable_fini(nvml_ftable, nvml_handle);
+    }
+    return status;
+}
+
+void nvshmemi_nvml_ftable_fini(struct nvml_function_table *nvml_ftable, void **nvml_handle) {
+    if (*nvml_handle) {
+        dlclose(*nvml_handle);
+        *nvml_handle = NULL;
+        memset(nvml_ftable, 0, sizeof(*nvml_ftable));
+    }
+}
+
+bool is_mnnvl_supported(int dev_id) {
+    nvmlGpuFabricInfoV_t fabricInfo = {};
+    const unsigned char zero[NVML_GPU_FABRIC_UUID_LEN] = {0};
+    cudaDeviceProp prop;
+    char pcie_bdf[50] = {0};
+    int nbytes = 0;
+    int attr;
+    nvmlReturn_t nvml_status;
+    nvmlDevice_t local_device;
+    CUdevice my_dev;
+    int cuda_drv_version;
+    fabricInfo.version = nvmlGpuFabricInfo_v2;
+    CUDA_CHECK(cudaDriverGetVersion(&cuda_drv_version));
+    CU_CHECK(cuDeviceGet(&my_dev, dev_id));
+
+    /* start NVML Library */
+    if (nvshmemi_nvml_ftable_init(&nvml_ftable, &nvml_handle) != 0) {
+        DEBUG_PRINT("Unable to open NVML library, disabling MNNVL\n");
+        return false;
+    }
+
+    nvml_status = nvml_ftable.nvmlInit();
+    if (nvml_status != NVML_SUCCESS) {
+        DEBUG_PRINT("Unable to initialize NVML library, disabling MNNVL\n");
+        return false;
+    }
+
+    CUDA_CHECK(cudaGetDeviceProperties(&prop, dev_id));
+    nbytes =
+        snprintf(pcie_bdf, 50, "%x:%x:%x.0", prop.pciDomainID, prop.pciBusID, prop.pciDeviceID);
+    if (nbytes < 0 || nbytes > 50) {
+        DEBUG_PRINT("Unable to set device pcie bdf for our local device, disabling MNNVL\n");
+        return false;
+    }
+
+    bool disable_mnnvl = false;
+    const char *env_value = (const char *)getenv("NVSHMEM_DISABLE_MNNVL");
+    if (env_value && (env_value[0] == '0' || env_value[0] == 'N' || env_value[0] == 'n' ||
+                      env_value[0] == 'F' || env_value[0] == 'f')) {
+        disable_mnnvl = true;
+    } else if (env_value) {
+        disable_mnnvl = true;
+    }
+
+    if (cuda_drv_version >= 12040 && prop.major >= 9 && !disable_mnnvl) {
+        nvml_status = nvml_ftable.nvmlDeviceGetHandleByPciBusId(pcie_bdf, &local_device);
+        if (nvml_status != NVML_SUCCESS) {
+            DEBUG_PRINT("nvmlDeviceGetHandleByPciBusId failed %d, disabling MNNVL\n", nvml_status);
+            return false;
+        }
+
+        /* Some platforms with older driver may not support this API, so bypass MNNVL discovery */
+        if (nvml_ftable.nvmlDeviceGetGpuFabricInfoV == NULL) {
+            DEBUG_PRINT("nvmlDeviceGetGpuFabricInfoV not found, MNNVL not supported\n");
+            return false;
+        }
+
+        nvml_status = nvml_ftable.nvmlDeviceGetGpuFabricInfoV(local_device, &fabricInfo);
+        if (nvml_status != NVML_SUCCESS) {
+            DEBUG_PRINT("nvmlDeviceGetGpuFabricInfoV failed %d, disabling MNNVL\n", nvml_status);
+            return false;
+        }
+
+        CU_CHECK(
+            cuDeviceGetAttribute(&attr, CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_FABRIC_SUPPORTED, my_dev));
+        if (attr <= 0) {
+            DEBUG_PRINT("CUDA EGM fabric not supported\n");
+            return false;
+        }
+
+        if (fabricInfo.state < NVML_GPU_FABRIC_STATE_COMPLETED ||
+            memcmp(fabricInfo.clusterUuid, zero, NVML_GPU_FABRIC_UUID_LEN) == 0) {
+            DEBUG_PRINT("MNNVL not supported\n");
+            return false;
+        }
+    } else {
+        DEBUG_PRINT("MNNVL disabled\n");
+        return false;
+    }
+
+    nvml_status = nvml_ftable.nvmlShutdown();
+    if (nvml_status != NVML_SUCCESS) {
+        DEBUG_PRINT("Unable to stop NVML library in NVSHMEM.");
+        // is this a fatal error?
+        return false;
+    }
+    nvshmemi_nvml_ftable_fini(&nvml_ftable, &nvml_handle);
+    return true;
+}
+
+void *allocate_mmap_buffer(size_t size, int mem_fabric_handle_type, bool use_egm, bool reset_zero) {
+    mype = nvshmem_my_pe();
+    if (!mype) DEBUG_PRINT("allocating mmap buffer\n");
+    CUmemAllocationProp prop = {};
+    int dev_id, numa_id;
+    size_t granularity = MEM_GRANULARITY;
+    int cuda_drv_version;
+    CUdevice my_dev;
+    CUDA_CHECK(cudaDriverGetVersion(&cuda_drv_version));
+    // Application should set the device id before calling this function
+    // same as nvshmem_malloc()
+    CUDA_CHECK(cudaGetDevice(&dev_id));
+    CU_CHECK(cuDeviceGet(&my_dev, dev_id));
+    prop.location.id = dev_id;
+    prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+    prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+    if (use_egm) {
+        if (!mype) DEBUG_PRINT("using EGM memory\n");
+        prop.location.type = CU_MEM_LOCATION_TYPE_HOST_NUMA;
+        CU_CHECK(cuDeviceGetAttribute(&numa_id, CU_DEVICE_ATTRIBUTE_HOST_NUMA_ID, my_dev));
+        prop.location.id = numa_id;
+    } else {
+        prop.allocFlags.gpuDirectRDMACapable = 1;
+    }
+
+    prop.requestedHandleTypes =
+        (CUmemAllocationHandleType)(CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR);
+    if ((mem_handle_type == MEM_TYPE_AUTO) && is_mnnvl_supported(dev_id)) {
+        prop.requestedHandleTypes = (CUmemAllocationHandleType)(CU_MEM_HANDLE_TYPE_FABRIC);
+    }
+    // override if user specified mem handle type
+    if (mem_handle_type == MEM_TYPE_FABRIC) {
+        prop.requestedHandleTypes = (CUmemAllocationHandleType)(CU_MEM_HANDLE_TYPE_FABRIC);
+    } else if (mem_handle_type == MEM_TYPE_POSIX_FD) {
+        prop.requestedHandleTypes =
+            (CUmemAllocationHandleType)(CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR);
+    }
+
+    // pad size to be multiple of granularity
+    size = ((size + granularity - 1) / granularity) * granularity;
+    // printf("Allocating mmap buffer: %d, %d size:%lu\n",mem_handle_type, use_egm, size);
+    if (!mype) DEBUG_PRINT("padding buffer size to %lu\n", size);
+    void *bufAddr, *mmapedAddr;
+
+    CUmemAccessDesc accessDescriptor;
+    accessDescriptor.location.id = prop.location.id;
+    accessDescriptor.location.type = prop.location.type;
+    accessDescriptor.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+
+    CUmemGenericAllocationHandle userAllocHandle;
+
+    CU_CHECK(cuMemCreate(&userAllocHandle, size, (const CUmemAllocationProp *)&prop, 0));
+    CU_CHECK(cuMemAddressReserve((CUdeviceptr *)&bufAddr, size, 0, (CUdeviceptr)NULL, 0));
+    CU_CHECK(cuMemMap((CUdeviceptr)bufAddr, size, 0, userAllocHandle, 0));
+    CU_CHECK(
+        cuMemSetAccess((CUdeviceptr)bufAddr, size, (const CUmemAccessDesc *)&accessDescriptor, 1));
+
+    mmapedAddr = (void *)nvshmemx_buffer_register_symmetric(bufAddr, size, 0);
+    mmaped_buffers[mmapedAddr] = std::make_tuple(bufAddr, size, userAllocHandle);
+    if (reset_zero && mmapedAddr) {
+        if (use_egm) {
+            memset(mmapedAddr, 0, size);
+        } else {
+            CUDA_CHECK(cudaMemset(mmapedAddr, 0, size));
+        }
+    }
+    return mmapedAddr;
+}
+
+size_t pad_up(size_t size) {
+    return ((size + MEM_GRANULARITY - 1) / MEM_GRANULARITY) * MEM_GRANULARITY;
+}
+
+void free_mmap_buffer(void *ptr) {
+    if (mmaped_buffers.count(ptr) == 0) {
+        ERROR_PRINT("mmaped buffer not found %p\n", ptr);
+        exit(1);
+    }
+    void *bufAddr = std::get<0>(mmaped_buffers[ptr]);
+    size_t size = std::get<1>(mmaped_buffers[ptr]);
+    nvshmemx_buffer_unregister_symmetric(ptr, size);
+    // free the user buffer
+    CU_CHECK(cuMemUnmap((CUdeviceptr)bufAddr, size));
+    CU_CHECK(cuMemAddressFree((CUdeviceptr)bufAddr, size));
+    CU_CHECK(cuMemRelease(std::get<2>(mmaped_buffers[ptr])));
+    mmaped_buffers.erase(ptr);
 }

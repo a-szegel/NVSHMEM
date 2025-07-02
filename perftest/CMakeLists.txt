@@ -71,17 +71,19 @@ if(NOT SubBuild)
 
   #TODO: consolidate cuda architecture detection code in a single file.
   if(DEFINED CMAKE_CUDA_ARCHITECTURES_UNDEFINED)
-    if(NOT DEFINED CUDA_ARCHITECTURES_UNDEFINED)
-      set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES} CACHE STRING "CUDA ARCHITECTURES" FORCE)
-    else()
+      if(NOT DEFINED CUDA_ARCHITECTURES_UNDEFINED)
+        set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES} CACHE STRING "CUDA ARCHITECTURES" FORCE)
+      else()
       if(CUDAToolkit_VERSION_MAJOR LESS 11)
         set(CMAKE_CUDA_ARCHITECTURES "70" CACHE STRING "CUDA ARCHITECTURES" FORCE)
       elseif(CUDAToolkit_VERSION_MAJOR EQUAL 11 AND CUDAToolkit_VERSION_MINOR LESS 8)
-        set(CMAKE_CUDA_ARCHITECTURES "70;80" CACHE STRING "CUDA ARCHITECTURES" FORCE)
+        set(CMAKE_CUDA_ARCHITECTURES "70-real;80" CACHE STRING "CUDA ARCHITECTURES" FORCE)
       elseif(CUDAToolkit_VERSION_MAJOR EQUAL 11 OR (CUDAToolkit_VERSION_MAJOR EQUAL 12 AND CUDAToolkit_VERSION_MINOR LESS 8))
-        set(CMAKE_CUDA_ARCHITECTURES "70;80;90" CACHE STRING "CUDA ARCHITECTURES" FORCE)
+        set(CMAKE_CUDA_ARCHITECTURES "70-real;80-real;89-real;90" CACHE STRING "CUDA ARCHITECTURES" FORCE)
+      elseif(CUDAToolkit_VERSION_MAJOR EQUAL 13)
+        set(CMAKE_CUDA_ARCHITECTURES "80-real;89-real;90-real;100-real;120" CACHE STRING "CUDA ARCHITECTURES" FORCE)
       else()
-        set(CMAKE_CUDA_ARCHITECTURES "70;80;90;100" CACHE STRING "CUDA ARCHITECTURES" FORCE)
+        set(CMAKE_CUDA_ARCHITECTURES "70-real;80-real;89-real;90-real;100-real;120" CACHE STRING "CUDA ARCHITECTURES" FORCE)
       endif()
     endif()
   endif()
@@ -127,6 +129,15 @@ if(NOT SubBuild)
   endif()
 endif()
 
+if(CUDAToolkit_VERSION_MAJOR LESS 13)
+  set(PERFTEST_CXX_STANDARD 11)
+else()
+  set(PERFTEST_CXX_STANDARD 17)
+endif()
+
+# Tile-granular API examples need C++ 17
+set(PERFTEST_CXX_STANDARD 17)
+
 add_subdirectory(common)
 
 if(CUDAToolkit_VERSION_MAJOR LESS 12)
@@ -154,8 +165,8 @@ macro(nvshmem_add_perftest_prefix SOURCE PREFIX)
   POSITION_INDEPENDENT_CODE ON
   CXX_STANDARD_REQUIRED ON
   CUDA_STANDARD_REQUIRED ON
-  CXX_STANDARD 11
-  CUDA_STANDARD 11
+  CXX_STANDARD ${PERFTEST_CXX_STANDARD}
+  CUDA_STANDARD ${PERFTEST_CXX_STANDARD}
   CUDA_SEPARABLE_COMPILATION ON
   )
 
@@ -187,7 +198,7 @@ macro(nvshmem_add_cubin_perftest_prefix SOURCE PREFIX)
     set(BITCODE_LIB_PATH ${NVSHMEM_PREFIX}/lib/libnvshmem_device.bc)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${CUBIN_NAME}
                       COMMAND clang -c -emit-llvm -std=c++11 -x cuda --cuda-path=${CUDA_HOME} --cuda-device-only
-                              --cuda-gpu-arch=${NVSHMEM_CLANG_ARCH} ${INCLUDE_DIRECTORIES} -DNVSHMEM_BITCODE_APPLICATION ${DIR_} -o ${NAME_}.bc.unoptimized
+                              --cuda-gpu-arch=${NVSHMEM_CLANG_ARCH} ${INCLUDE_DIRECTORIES} -DNVSHMEM_HOSTLIB_ONLY ${DIR_} -o ${NAME_}.bc.unoptimized
                       COMMAND llvm-link --only-needed ${NAME_}.bc.unoptimized ${BITCODE_LIB_PATH} -o ${NAME_}.bc.unoptimized.linked
                       COMMAND opt -O3 ${NAME_}.bc.unoptimized.linked -o ${NAME_}.bc
                       COMMAND llc -O3 --disable-tail-calls -mcpu=${NVSHMEM_CLANG_ARCH} -mattr=${NVSHMEM_PTX_ARCH} ${NAME_}.bc -o ${NAME_}.ptx
@@ -200,7 +211,7 @@ macro(nvshmem_add_cubin_perftest_prefix SOURCE PREFIX)
     set(BITCODE_LIB_PATH ${CMAKE_BINARY_DIR}/src/lib/libnvshmem_device.bc)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${CUBIN_NAME}
                       COMMAND clang -c -emit-llvm -std=c++11 -x cuda --cuda-path=${CUDA_HOME} --cuda-device-only
-                              --cuda-gpu-arch=${NVSHMEM_CLANG_ARCH} ${INCLUDE_DIRECTORIES} -DNVSHMEM_BITCODE_APPLICATION ${DIR_} -o ${NAME_}.bc.unoptimized
+                              --cuda-gpu-arch=${NVSHMEM_CLANG_ARCH} ${INCLUDE_DIRECTORIES} -DNVSHMEM_HOSTLIB_ONLY ${DIR_} -o ${NAME_}.bc.unoptimized
                       COMMAND llvm-link --only-needed ${NAME_}.bc.unoptimized ${BITCODE_LIB_PATH} -o ${NAME_}.bc.unoptimized.linked
                       COMMAND opt -O3 ${NAME_}.bc.unoptimized.linked -o ${NAME_}.bc
                       COMMAND llc -O3 --disable-tail-calls -mcpu=${NVSHMEM_CLANG_ARCH} -mattr=${NVSHMEM_PTX_ARCH} ${NAME_}.bc -o ${NAME_}.ptx

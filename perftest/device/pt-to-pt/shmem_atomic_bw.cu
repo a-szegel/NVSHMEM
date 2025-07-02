@@ -14,7 +14,7 @@
 
 #include "atomic_bw_common.h"
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 extern "C" {
 #endif
 
@@ -38,7 +38,7 @@ DEFINE_ATOMIC_BW_FN_ONE_ARG(set, i + 1);
 
 DEFINE_ATOMIC_BW_FN_TWO_ARG(compare_swap, i, i + 1);
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 }
 #endif
 
@@ -91,8 +91,14 @@ int main(int argc, char *argv[]) {
     h_size_arr = (uint64_t *)h_tables[0];
     h_bw = (double *)h_tables[1];
 
-    data_d = (uint64_t *)nvshmem_malloc(max_size);
-    CUDA_CHECK(cudaMemset(data_d, 0, max_size));
+    if (use_mmap) {
+        data_d = (uint64_t *)allocate_mmap_buffer(max_size, mem_handle_type, use_egm, true);
+        DEBUG_PRINT("Allocated mmap buffer\n");
+    } else {
+        data_d = (uint64_t *)nvshmem_malloc(max_size);
+        DEBUG_PRINT("Allocated nvshmem malloc buffer\n");
+        CUDA_CHECK(cudaMemset(data_d, 0, max_size));
+    }
 
     CUDA_CHECK(cudaMalloc((void **)&counter_d, sizeof(unsigned int) * 2));
     CUDA_CHECK(cudaMemset(counter_d, 0, sizeof(unsigned int) * 2));
@@ -127,13 +133,21 @@ int main(int argc, char *argv[]) {
                     break;
                 }
                 case AMO_AND: {
-                    CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    if (use_egm) {
+                        memset(data_d, 0xFF, size);
+                    } else {
+                        CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    }
                     CALL_ATOMIC_BW_KERNEL(and, blocks, threads, data_d, counter_d, nelems, mype,
                                           skip, args_skip)
                     break;
                 }
                 case AMO_OR: {
-                    CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    if (use_egm) {
+                        memset(data_d, 0xFF, size);
+                    } else {
+                        CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    }
                     CALL_ATOMIC_BW_KERNEL(or, blocks, threads, data_d, counter_d, nelems, mype,
                                           skip, args_skip)
                     break;
@@ -159,13 +173,21 @@ int main(int argc, char *argv[]) {
                     break;
                 }
                 case AMO_FETCH_AND: {
-                    CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    if (use_egm) {
+                        memset(data_d, 0xFF, size);
+                    } else {
+                        CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    }
                     CALL_ATOMIC_BW_KERNEL(fetch_and, blocks, threads, data_d, counter_d, nelems,
                                           mype, skip, args_skip)
                     break;
                 }
                 case AMO_FETCH_OR: {
-                    CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    if (use_egm) {
+                        memset(data_d, 0xFF, size);
+                    } else {
+                        CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    }
                     CALL_ATOMIC_BW_KERNEL(fetch_or, blocks, threads, data_d, counter_d, nelems,
                                           mype, skip, args_skip)
                     break;
@@ -203,11 +225,19 @@ int main(int argc, char *argv[]) {
             CUDA_CHECK(cudaMemset(counter_d, 0, sizeof(unsigned int) * 2));
             switch (test_amo.type) {
                 case AMO_AND: {
-                    CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    if (use_egm) {
+                        memset(data_d, 0xFF, size);
+                    } else {
+                        CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    }
                     break;
                 }
                 case AMO_OR: {
-                    CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    if (use_egm) {
+                        memset(data_d, 0xFF, size);
+                    } else {
+                        CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    }
                     break;
                 }
                 case AMO_XOR: {
@@ -219,11 +249,19 @@ int main(int argc, char *argv[]) {
                     break;
                 }
                 case AMO_FETCH_AND: {
-                    CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    if (use_egm) {
+                        memset(data_d, 0xFF, size);
+                    } else {
+                        CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    }
                     break;
                 }
                 case AMO_FETCH_OR: {
-                    CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    if (use_egm) {
+                        memset(data_d, 0xFF, size);
+                    } else {
+                        CUDA_CHECK(cudaMemset(data_d, 0xFF, size));
+                    }
                     break;
                 }
                 case AMO_FETCH_XOR: {
@@ -336,7 +374,13 @@ int main(int argc, char *argv[]) {
 
 finalize:
 
-    if (data_d) nvshmem_free(data_d);
+    if (data_d) {
+        if (use_mmap) {
+            free_mmap_buffer(data_d);
+        } else {
+            nvshmem_free(data_d);
+        }
+    }
     free_tables(h_tables, 2);
     finalize_wrapper();
 

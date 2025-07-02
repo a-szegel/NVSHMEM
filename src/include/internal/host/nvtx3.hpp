@@ -964,9 +964,9 @@ NVTX3_INLINE_IF_REQUESTED namespace NVTX3_VERSION_NAMESPACE {
         color() = delete;
         ~color() = default;
         color(color const&) = default;
-        color& operator=(color const&) = default;
+        color& operator=(color const&) = delete;
         color(color&&) = default;
-        color& operator=(color&&) = default;
+        color& operator=(color&&) = delete;
 
        private:
         /**
@@ -1030,9 +1030,9 @@ NVTX3_INLINE_IF_REQUESTED namespace NVTX3_VERSION_NAMESPACE {
         category() = delete;
         ~category() = default;
         category(category const&) = default;
-        category& operator=(category const&) = default;
+        category& operator=(category const&) = delete;
         category(category&&) = default;
-        category& operator=(category&&) = default;
+        category& operator=(category&&) = delete;
 
        private:
         id_type const id_{};  ///< category's unique identifier

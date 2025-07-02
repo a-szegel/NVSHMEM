@@ -63,7 +63,12 @@ static int nvshmemi_coll_common_cpu_read_env() {
     assert(nvshmemi_options.BCAST_TREE_KVAL >= 2);
 
     nvshmemi_device_state.gpu_coll_env_params_var.fcollect_algo = nvshmemi_options.FCOLLECT_ALGO;
+
+    INFO(NVSHMEM_INIT, "ALGO: FCOLLECT_ALGO set to %d", nvshmemi_options.FCOLLECT_ALGO);
+
     nvshmemi_device_state.gpu_coll_env_params_var.bcast_algo = nvshmemi_options.BCAST_ALGO;
+    INFO(NVSHMEM_INIT, "ALGO: BCAST_ALGO set to %d", nvshmemi_options.BCAST_ALGO);
+
     /* Backwards compatibility support for maxloc_reduce algorithm selection
      * In 3.0 reduce_maxloc_algo didn't exist and reduce_algo was used for branching in
      * reduce_maxloc. When reduce_maxloc_algo was added, it was placed at the end of the structure
@@ -74,13 +79,17 @@ static int nvshmemi_coll_common_cpu_read_env() {
      * replaced with reduce_maxloc algo.
      */
     nvshmemi_device_state.gpu_coll_env_params_var.reduce_algo = nvshmemi_options.REDUCE_ALGO;
+    INFO(NVSHMEM_INIT, "ALGO: REDUCE_ALGO set to %d (0 -> 1)", nvshmemi_options.REDUCE_ALGO);
     if (nvshmemi_device_state.gpu_coll_env_params_var.reduce_algo == 0) {
         nvshmemi_device_state.gpu_coll_env_params_var.reduce_algo = 1;
     }
     nvshmemi_device_state.gpu_coll_env_params_var.reduce_maxloc_algo =
         nvshmemi_options.REDMAXLOC_ALGO;
+    INFO(NVSHMEM_INIT, "ALGO: REDMAXLOC_ALGO set to %d", nvshmemi_options.REDMAXLOC_ALGO);
+
     nvshmemi_device_state.gpu_coll_env_params_var.reducescatter_algo =
         nvshmemi_options.REDUCESCATTER_ALGO;
+    INFO(NVSHMEM_INIT, "ALGO: REDUCESCATTER_ALGO set to %d", nvshmemi_options.REDUCESCATTER_ALGO);
     return status;
 }
 

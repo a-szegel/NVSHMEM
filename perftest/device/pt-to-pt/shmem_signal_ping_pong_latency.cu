@@ -19,7 +19,7 @@
 #include <unistd.h>
 #include "utils.h"
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 extern "C" {
 #endif
 
@@ -42,7 +42,7 @@ __global__ void ping_pong(uint64_t *flag_d, int pe, int iter) {
     nvshmem_quiet();
 }
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 }
 #endif
 
@@ -97,8 +97,14 @@ int main(int argc, char *argv[]) {
     alloc_tables(&h_tables, 2, 1);
     h_lat = (double *)h_tables[1];
 
-    flag_d = (uint64_t *)nvshmem_malloc(sizeof(uint64_t));
-    CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(uint64_t)));
+    if (use_mmap) {
+        flag_d = (uint64_t *)allocate_mmap_buffer(sizeof(uint64_t), mem_handle_type, use_egm, true);
+        DEBUG_PRINT("Allocated mmap buffer\n");
+    } else {
+        flag_d = (uint64_t *)nvshmem_malloc(sizeof(uint64_t));
+        DEBUG_PRINT("Allocated nvshmem malloc buffer\n");
+        CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(uint64_t)));
+    }
 
     CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
@@ -115,13 +121,21 @@ int main(int argc, char *argv[]) {
         void *args_1[] = {&flag_d, &mype, &skip};
         void *args_2[] = {&flag_d, &mype, &iter};
 
-        CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(uint64_t)));
+        if (use_egm) {
+            memset(flag_d, 0, sizeof(uint64_t));
+        } else {
+            CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(uint64_t)));
+        }
         CUDA_CHECK(cudaDeviceSynchronize());
         nvshmem_barrier_all();
 
         test_ping_pong(args_1, test_cubin, stream);
         CUDA_CHECK(cudaDeviceSynchronize());
-        CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(uint64_t)));
+        if (use_egm) {
+            memset(flag_d, 0, sizeof(uint64_t));
+        } else {
+            CUDA_CHECK(cudaMemset(flag_d, 0, sizeof(uint64_t)));
+        }
         nvshmem_barrier_all();
 
         cudaEventRecord(start, stream);
@@ -141,7 +155,13 @@ int main(int argc, char *argv[]) {
     }
 finalize:
 
-    if (flag_d) nvshmem_free(flag_d);
+    if (flag_d) {
+        if (use_mmap) {
+            free_mmap_buffer(flag_d);
+        } else {
+            nvshmem_free(flag_d);
+        }
+    }
     free_tables(h_tables, 2);
     finalize_wrapper();
 

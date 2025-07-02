@@ -89,6 +89,11 @@ mspace::mspace(void *base, size_t capacity) {
 
 void mspace::add_free_chunk(char *base, size_t capacity) {
     bool merged = 0;
+    if (inuse_chunks.count(base)) {
+        fprintf(stderr, "inuse chunk used as free chunk\n");
+        exit(-1);
+    }
+
     /* check if previous chunk is free */
     if (free_chunks_end.find(base) != free_chunks_end.end()) {
         size_t psize = free_chunks_end[base];
@@ -155,6 +160,7 @@ void mspace::deallocate(void *mem) {
         printf("Free called on an invalid pointer\n");
         exit(-1);
     }
+
     size_t bytes = inuse_chunks[mem];
     inuse_chunks.erase(mem);
 
@@ -221,4 +227,11 @@ void *mspace::reallocate(void *ptr, size_t size) {
     } else {
         return ptr;
     }
+}
+
+bool mspace::checkInuse(void *ptr, size_t size) {
+    if ((inuse_chunks.find(ptr) != inuse_chunks.end()) && (inuse_chunks[ptr] == size)) {
+        return true;
+    }
+    return false;
 }

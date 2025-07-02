@@ -20,6 +20,7 @@ void nvshmemi_call_alltoall_on_stream_kernel(nvshmem_team_t team, TYPE *dest, co
                                              size_t nelems, cudaStream_t stream) {
     int tmp;
     std::string type_str(typeid(TYPE).name());
+    int in_cuda_graph = 0;
     if (nvshmemi_alltoall_maxblocksize.find(type_str) == nvshmemi_alltoall_maxblocksize.end()) {
         CUDA_RUNTIME_CHECK(cudaOccupancyMaxPotentialBlockSize(
             &tmp, (int *)&nvshmemi_alltoall_maxblocksize[type_str],
@@ -29,8 +30,12 @@ void nvshmemi_call_alltoall_on_stream_kernel(nvshmem_team_t team, TYPE *dest, co
                                     ? nelems
                                     : nvshmemi_alltoall_maxblocksize[type_str];
     int num_blocks = 1;
-    alltoall_on_stream_kernel<TYPE>
-        <<<num_blocks, num_threads_per_block, 0, stream>>>(team, dest, source, nelems);
+    cudaStreamCaptureStatus status;
+    CUDA_RUNTIME_CHECK(cudaStreamIsCapturing(stream, &status));
+    if (status == cudaStreamCaptureStatusActive) in_cuda_graph = 1;
+
+    alltoall_on_stream_kernel<TYPE><<<num_blocks, num_threads_per_block, 0, stream>>>(
+        team, dest, source, nelems, in_cuda_graph);
     CUDA_RUNTIME_CHECK(cudaGetLastError());
 }
 

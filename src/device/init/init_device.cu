@@ -28,7 +28,7 @@ __constant__ __attribute__((used)) nvshmemi_ibgda_device_state_t nvshmemi_ibgda_
 
 nvshmemi_device_state_t nvshmemi_device_only_state;
 
-#ifdef __clang__
+#ifdef __clang_llvm_bitcode_lib__
 __constant__ __attribute__((address_space(4), used))
 nvshmemi_device_host_state_t nvshmemi_device_state_d = {};
 const nvshmemi_version_t nvshmemi_device_lib_version = {

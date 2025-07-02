@@ -14,7 +14,7 @@
 
 #include "coll_test.h"
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 extern "C" {
 #endif
 
@@ -61,7 +61,7 @@ SYNC_KERNEL(, , 1, _all_, _all, , );
 SYNC_KERNEL(x, _warp, warpSize, _all_, _all, , );
 SYNC_KERNEL(x, _block, INT_MAX, _all_, _all, , );
 
-#if defined __cplusplus || defined NVSHMEM_BITCODE_APPLICATION
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
 }
 #endif
 
@@ -75,6 +75,9 @@ int sync_calling_kernel(nvshmem_team_t team, cudaStream_t stream, int mype, void
     double *h_warp_lat = (double *)h_tables[1];
     double *h_block_lat = (double *)h_tables[2];
     size_t size = 0;
+
+    uint64_t tpb_size = (uint64_t)nvshm_test_num_tpb;
+
     void *sync_args_1[] = {&team, &skip};
     void *sync_args_2[] = {&team, &iter};
     void *sync_all_args_1[] = {&skip};
@@ -139,12 +142,12 @@ int sync_calling_kernel(nvshmem_team_t team, cudaStream_t stream, int mype, void
     }
 
     if (!mype) {
-        print_table_basic("sync_device", "thread", "threads per block", "latency", "us", '-', &size,
-                          h_thread_lat, 1);
-        print_table_basic("sync_device", "warp", "threads per block", "latency", "us", '-', &size,
-                          h_warp_lat, 1);
-        print_table_basic("sync_device", "block", "threads per block", "latency", "us", '-', &size,
-                          h_block_lat, 1);
+        print_table_basic("sync_device", "thread", "threads per block", "latency", "us", '-',
+                          &tpb_size, h_thread_lat, 1);
+        print_table_basic("sync_device", "warp", "threads per block", "latency", "us", '-',
+                          &tpb_size, h_warp_lat, 1);
+        print_table_basic("sync_device", "block", "threads per block", "latency", "us", '-',
+                          &tpb_size, h_block_lat, 1);
     }
 
     nvshmem_barrier_all();
@@ -202,11 +205,11 @@ int sync_calling_kernel(nvshmem_team_t team, cudaStream_t stream, int mype, void
 
     if (!mype) {
         print_table_basic("sync_all_device", "thread", "threads per block", "latency", "us", '-',
-                          &size, h_thread_lat, 1);
+                          &tpb_size, h_thread_lat, 1);
         print_table_basic("sync_all_device", "warp", "threads per block", "latency", "us", '-',
-                          &size, h_warp_lat, 1);
+                          &tpb_size, h_warp_lat, 1);
         print_table_basic("sync_all_device", "block", "threads per block", "latency", "us", '-',
-                          &size, h_block_lat, 1);
+                          &tpb_size, h_block_lat, 1);
     }
 
     return status;

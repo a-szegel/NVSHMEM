@@ -53,8 +53,13 @@ int main(int argc, char **argv) {
     CUDA_CHECK(cudaHostAlloc(&h_buffer, max_size * 2, cudaHostAllocDefault));
     h_source = (DATATYPE *)h_buffer;
     h_dest = (DATATYPE *)&h_source[max_size / sizeof(DATATYPE)];
-
-    d_buffer = (DATATYPE *)nvshmem_malloc(max_size * 2);
+    if (use_mmap) {
+        d_buffer = (DATATYPE *)allocate_mmap_buffer(max_size * 2, mem_handle_type, use_egm);
+        DEBUG_PRINT("Allocated mmap buffer\n");
+    } else {
+        d_buffer = (DATATYPE *)nvshmem_malloc(max_size * 2);
+        DEBUG_PRINT("Allocated nvshmem malloc buffer\n");
+    }
     if (!d_buffer) {
         fprintf(stderr, "nvshmem_malloc failed \n");
         status = -1;
@@ -128,7 +133,11 @@ int main(int argc, char **argv) {
     nvshmem_barrier_all();
 
     CUDA_CHECK(cudaFreeHost(h_buffer));
-    nvshmem_free(d_buffer);
+    if (use_mmap) {
+        free_mmap_buffer(d_buffer);
+    } else {
+        nvshmem_free(d_buffer);
+    }
 
     CUDA_CHECK(cudaStreamDestroy(stream));
 

@@ -42,7 +42,7 @@ NVSHMEMI_ENV_DEF(INFO_HIDDEN, bool, false, NVSHMEMI_ENV_CAT_HIDDEN,
 NVSHMEMI_ENV_DEF(DISABLE_NVLS, bool, false, NVSHMEMI_ENV_CAT_OPENSHMEM,
                  "Disable NVLS SHARP resources for collectives, even if available for platform")
 
-NVSHMEMI_ENV_DEF(DISABLE_NVLS_SHARING, bool, true, NVSHMEMI_ENV_CAT_HIDDEN,
+NVSHMEMI_ENV_DEF(DISABLE_NVLS_SHARING, bool, false, NVSHMEMI_ENV_CAT_HIDDEN,
                  "Disable NVLS SHARP resource sharing for user-defined teams")
 
 NVSHMEMI_ENV_DEF(SYMMETRIC_SIZE, size, (size_t)(SYMMETRIC_SIZE_DEFAULT), NVSHMEMI_ENV_CAT_OPENSHMEM,
@@ -72,6 +72,8 @@ NVSHMEMI_ENV_DEF(ENABLE_RAIL_OPT, bool, 0, NVSHMEMI_ENV_CAT_HIDDEN,
 NVSHMEMI_ENV_DEF(DEBUG, string, "", NVSHMEMI_ENV_CAT_OPENSHMEM,
                  "Set to enable debugging messages.\n"
                  "Optional values: VERSION, WARN, INFO, ABORT, TRACE")
+NVSHMEMI_ENV_DEF(ENABLE_ALIGNED_MALLOC, bool, false, NVSHMEMI_ENV_CAT_HIDDEN,
+                 "Enable aligned heap allocation")
 
 /** Bootstrap **/
 
@@ -163,9 +165,19 @@ NVSHMEMI_ENV_DEF(DEBUG_ATTACH_DELAY, int, 0, NVSHMEMI_ENV_CAT_OTHER,
 NVSHMEMI_ENV_DEF(DEBUG_SUBSYS, string, "", NVSHMEMI_ENV_CAT_HIDDEN,
                  "Comma separated list of debugging message sources. Prefix with '^' to exclude.\n"
                  "Values: INIT, COLL, P2P, PROXY, TRANSPORT, MEM, BOOTSTRAP, TOPO, UTIL, ALL")
+
 NVSHMEMI_ENV_DEF(DEBUG_FILE, string, "", NVSHMEMI_ENV_CAT_OTHER,
                  "Debugging output filename, may contain %h for hostname and %p for pid")
+
 NVSHMEMI_ENV_DEF(ENABLE_ERROR_CHECKS, bool, false, NVSHMEMI_ENV_CAT_HIDDEN, "Enable error checks")
+
+NVSHMEMI_ENV_DEF(
+    G_COALESCING_BUF_SIZE, int, 128 * 64 * 32 * 8, NVSHMEMI_ENV_CAT_OTHER,
+    "Size of buffer used for coalescing shmem_g operations. Must be a multiple of 256B (32 * 8).")
+
+NVSHMEMI_ENV_DEF(
+    G_BUF_SIZE, int, 1024 * 1024 * 8, NVSHMEMI_ENV_CAT_OTHER,
+    "Size of the g_buf to perform shmem_g operations in parallel. Must be a multiple of 8B.")
 
 NVSHMEMI_ENV_DEF(MAX_TEAMS, long, 32l, NVSHMEMI_ENV_CAT_OTHER,
                  "Maximum number of simultaneous teams allowed")
@@ -224,6 +236,12 @@ NVSHMEMI_ENV_DEF(
     REDUCESCATTER_NTHREADS, int, 512, NVSHMEMI_ENV_CAT_HIDDEN,
     "Sets number of threads per block for reducescatter collective.\n"
     "By default, if no env is set, default value is min(max_occupancy per CTA, msg size per PE).\n"
+    "If env is specified, value overrides the default irrespective of max occupancy per CTA\n")
+
+NVSHMEMI_ENV_DEF(
+    REDUCE_NTHREADS, int, 512, NVSHMEMI_ENV_CAT_HIDDEN,
+    "Sets number of threads per block for reduce collective.\n"
+    "By default, if no env is set, default value is min(max_occupancy per CTA, msg size).\n"
     "If env is specified, value overrides the default irrespective of max occupancy per CTA\n")
 
 NVSHMEMI_ENV_DEF(MAX_CTAS, int, 1, NVSHMEMI_ENV_CAT_HIDDEN,

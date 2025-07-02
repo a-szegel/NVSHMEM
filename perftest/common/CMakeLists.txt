@@ -4,8 +4,8 @@ set_target_properties(nvshmem_perftest_helper PROPERTIES
 POSITION_INDEPENDENT_CODE ON
 CXX_STANDARD_REQUIRED ON
 CUDA_STANDARD_REQUIRED ON
-CXX_STANDARD 11
-CUDA_STANDARD 11
+CXX_STANDARD ${PERFTEST_CXX_STANDARD}
+CUDA_STANDARD ${PERFTEST_CXX_STANDARD}
 CUDA_SEPARABLE_COMPILATION ON
 )
 
@@ -17,7 +17,6 @@ target_link_libraries(nvshmem_perftest_helper PUBLIC nvshmem)
 else()
 target_link_libraries(nvshmem_perftest_helper PUBLIC nvshmem_host nvshmem_device)
 endif()
-target_compile_features(nvshmem_perftest_helper PUBLIC cxx_std_11 cuda_std_11)
 
 if(NVSHMEM_SHMEM_SUPPORT)
   target_compile_definitions(nvshmem_perftest_helper PUBLIC NVSHMEMTEST_SHMEM_SUPPORT)

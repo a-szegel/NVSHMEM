@@ -9,6 +9,10 @@ set(BOOTSTRAP_VERSION_MAJOR 3)
 set(BOOTSTRAP_VERSION_MINOR 0)
 set(BOOTSTRAP_VERSION_PATCH 0)
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  add_compile_options(-Wno-vla-cxx-extension)
+endif()
+
 if(NOT CMAKE_CUDA_ARCHITECTURES_UNDEFINED)
     list(APPEND my_cmake_cache_args
         -DCMAKE_CUDA_ARCHITECTURES:STRING=${CMAKE_CUDA_ARCHITECTURES}
@@ -23,6 +27,9 @@ ExternalProject_Add(nvshmem_device_project
                                 -DNVSHMEM_DEBUG=${NVSHMEM_DEBUG}
                                 -DNVSHMEM_DEVICELIB_CUDA_HOME=${NVSHMEM_DEVICELIB_CUDA_HOME}
                                 -DNVSHMEM_ENABLE_ALL_DEVICE_INLINING=${NVSHMEM_ENABLE_ALL_DEVICE_INLINING}
+                                -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+                                -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+                                -DCMAKE_CUDA_HOST_COMPILER=${CMAKE_CUDA_HOST_COMPILER}
                                 -DPROJECT_VERSION=${PROJECT_VERSION}
 				$ENV{CMAKE_CCACHE_FLAGS}
                     CMAKE_CACHE_ARGS ${my_cmake_cache_args}
@@ -36,6 +43,12 @@ set_property(TARGET nvshmem_device PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BI
 
 ## Start bitcode library configurations
 
+if(CUDAToolkit_VERSION_MAJOR LESS 13)
+  set(LIB_CXX_STANDARD 11)
+else()
+  set(LIB_CXX_STANDARD 17)
+endif()
+
 if(NVSHMEM_BUILD_BITCODE_LIBRARY)
   if(NOT NVSHMEM_ENABLE_ALL_DEVICE_INLINING)
     configure_file(include/non_abi/device/pt-to-pt/transfer_device.cuh.in llvm_lib/non_abi/device/pt-to-pt/transfer_device.cuh COPYONLY)
@@ -46,11 +59,17 @@ if(NVSHMEM_BUILD_BITCODE_LIBRARY)
     set(BITCODE_LIB_ARCH "sm_90")
   endif()
 
+  if(CUDAToolkit_VERSION_MAJOR LESS 13)
+    set(BITCODE_CXX_STD "c++11")
+  else()
+    set(BITCODE_CXX_STD "c++17")
+  endif()
+
   # Note - today we do optimization to avoid having a too large bitcode file. There are, as of clang 18, some existing
   # limitations around compiling device libraries which make optimizing this library fine. Once these issues are fixed
   # we will have to remove optimizations to enable more flexible builds.
   add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/lib/libnvshmem_device.bc
-                    COMMAND clang -c -emit-llvm -O1 -std=c++11 -x cuda --cuda-path=${CUDA_HOME} --cuda-device-only
+                    COMMAND clang -c -emit-llvm -O1 -std=${BITCODE_CXX_STD} -x cuda --cuda-path=${CUDA_HOME} --cuda-device-only
                     --cuda-gpu-arch=${BITCODE_LIB_ARCH} -I ${CMAKE_CURRENT_SOURCE_DIR}/include
                     -I ${CMAKE_CURRENT_BINARY_DIR}/llvm_lib
                     -D__clang_llvm_bitcode_lib__ ${CMAKE_CURRENT_SOURCE_DIR}/device/init/init_device.cu -o libnvshmem_device.bc.unoptimized
@@ -134,7 +153,7 @@ if(NVSHMEM_PMIX_SUPPORT)
                              PRIVATE include
                              modules/bootstrap/common
                              ${PMIX_HOME}/include
- 
+
   )
 else()
 set(NVSHMEM_DEFAULT_PMIX OFF)
@@ -191,6 +210,7 @@ target_include_directories(nvshmem_bootstrap_uid
 			                     modules/bootstrap/uid/ncclSocket
 )
 
+
 set_target_properties(${ACTIVE_BOOTSTRAPS}
                       PROPERTIES PREFIX ""
                       LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"
@@ -213,8 +233,8 @@ set_target_properties(nvshmem nvshmem_host
                       PROPERTIES POSITION_INDEPENDENT_CODE ON
                       CXX_STANDARD_REQUIRED ON
                       CUDA_STANDARD_REQUIRED ON
-                      CXX_STANDARD 11
-                      CUDA_STANDARD 11
+                      CXX_STANDARD "${LIB_CXX_STANDARD}"
+                      CUDA_STANDARD "${LIB_CXX_STANDARD}"
                       CUDA_SEPARABLE_COMPILATION ON
                       LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"
                       ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"
@@ -254,6 +274,10 @@ macro(nvshmem_library_set_base_config LIBNAME)
     )
   endif()
 endmacro()
+
+set(NVSHMEM_PYTHON_SOURCES
+    ${CMAKE_SOURCE_DIR}/nvshmem4py/nvshmem/
+)
 
 set(NVSHMEM_DEVICE_SOURCES
     device/init/init_device.cu
@@ -352,6 +376,12 @@ target_include_directories(
   INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
             $<INSTALL_INTERFACE:include>
 )
+
+  # from cuda 13.0, some headers have been moved to include/cccl
+if(CUDAToolkit_VERSION_MAJOR GREATER_EQUAL 13)
+  target_include_directories(nvshmem_host PUBLIC ${CUDA_HOME}/include/cccl)
+  target_include_directories(nvshmem PUBLIC ${CUDA_HOME}/include/cccl)
+endif()
 
 target_link_libraries(nvshmem PRIVATE CUDA::cudart_static)
 target_link_libraries(nvshmem_host PRIVATE CUDA::cudart_static)
@@ -551,14 +581,16 @@ set(NVSHMEM_HOST_SOURCES
 endif()
 ## End dependecies
 
-## Start inlining requirements
-if(NVSHMEM_ENABLE_ALL_DEVICE_INLINING)
+## Start Numba support requirements
 set(INC_EXPORTS
     ${INC_EXPORTS}
     non_abi/device/pt-to-pt/transfer_device.cuh
 )
 configure_file(include/non_abi/device/pt-to-pt/transfer_device.cuh.in ${CMAKE_CURRENT_SOURCE_DIR}/include/non_abi/device/pt-to-pt/transfer_device.cuh COPYONLY)
-else()
+## End Numba support requirements
+
+## Start inlining requirements
+if(NOT NVSHMEM_ENABLE_ALL_DEVICE_INLINING)
 set(INC_EXPORTS
     ${INC_EXPORTS}
     non_abi/device/pt-to-pt/nvshmemi_transfer_api.cuh
@@ -586,7 +618,7 @@ add_library(NVSHMEM::nvshmem ALIAS nvshmem)
 # Start nvshmem-info definitions.
 add_executable(nvshmem-info)
 target_sources(nvshmem-info PRIVATE bin/nvshmem-info.cpp)
-set_target_properties(nvshmem-info PROPERTIES CXX_STANDARD_REQUIRED ON CXX_STANDARD 11 RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
+set_target_properties(nvshmem-info PROPERTIES CXX_STANDARD_REQUIRED ON CXX_STANDARD ${LIB_CXX_STANDARD} RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
 target_link_libraries(nvshmem-info CUDA::cudart_static CUDA::cuda_driver nvshmem)
 target_include_directories(nvshmem-info PRIVATE include include/host/env)
 # End nvshmem-info definitions.
@@ -609,6 +641,8 @@ set(INC_EXPORTS
     device/nvshmemx_collective_launch_apis.h
     device/nvshmemx_coll_defines.cuh
     device/nvshmemx_defines.h
+    device/tile/nvshmemx_tile_api.hpp
+    device/tile/nvshmemx_tile_api_defines.cuh
     non_abi/device/coll/alltoall.cuh
     non_abi/device/coll/barrier.cuh
     non_abi/device/coll/broadcast.cuh
@@ -621,7 +655,9 @@ set(INC_EXPORTS
     non_abi/device/pt-to-pt/ibgda_device.cuh
     non_abi/device/pt-to-pt/proxy_device.cuh
     non_abi/device/pt-to-pt/utils_device.h
+    non_abi/device/common/nvshmemi_tile_utils.cuh
     device_host/nvshmem_common.cuh
+    device_host/nvshmem_tensor.h
     device_host_transport/nvshmem_common_ibgda.h
     device_host_transport/nvshmem_constants.h
     non_abi/device/team/nvshmemi_team_defines.cuh
@@ -634,6 +670,7 @@ set(INC_EXPORTS
     non_abi/nvshmem_build_options.h
     non_abi/nvshmem_version.h
     nvshmem.h
+    nvshmem_host.h
     nvshmemx.h
 )
 
@@ -863,7 +900,7 @@ install(
 )
 
 install(
-  FILES ${CMAKE_BINARY_DIR}/lib/cmake/nvshmem/NVSHMEMDeviceTargets-${CMAKE_BUILD_TYPE}.cmake
+  FILES ${CMAKE_BINARY_DIR}/lib/cmake/nvshmem/NVSHMEMDeviceTargets-$<LOWER_CASE:${CMAKE_BUILD_TYPE}>.cmake
   DESTINATION lib/cmake/nvshmem/
   PERMISSIONS OWNER_READ OWNER_WRITE
               GROUP_READ WORLD_READ
@@ -902,7 +939,8 @@ install(
   PATTERN "perftest_install" EXCLUDE
   PATTERN "perftestCommon.py" EXCLUDE
   PATTERN "perftest-ib.list" EXCLUDE
-  PATTERN "perftest-p2p.list" EXCLUDE
+  PATTERN "perftest-p2p-nvlink.list" EXCLUDE
+  PATTERN "perftest-p2p-pcie.list" EXCLUDE
   PATTERN "perftestRunner.py" EXCLUDE
   PATTERN "perfTestRunnerSlurm.py" EXCLUDE
 )
@@ -966,6 +1004,8 @@ set(CPACK_SOURCE_IGNORE_FILES
 /examples/examples_install/;\
 /include/non_abi/nvshmem_build_options.h$;\
 /include/non_abi/nvshmem_version.h$;\
+/nvshmem4py/cmake/addCybind.cmake;\
+/nvshmem4py/cybind_assets/;\
 /perftest/perftest_install/;\
 /test/test_install/;
 /scripts/create_imex.sh;\
@@ -979,7 +1019,7 @@ set(CPACK_SOURCE_IGNORE_FILES
 /src/build/;")
 
 if(NOT NVSHMEM_INSTALL_FUNCTIONAL_TESTS)
-  set(CPACK_SOURCE_IGNORE_FILES ${CPACK_SOURCE_IGNORE_FILES}"/test/;/docker/;")
+  set(CPACK_SOURCE_IGNORE_FILES ${CPACK_SOURCE_IGNORE_FILES}"/test/;/docker/;/nvshmem4py/test/;")
 endif()
 
 
@@ -1005,4 +1045,14 @@ set(CPACK_RPM_PACKAGE_REQUIRES_PRE "/sbin/ldconfig")
 set(CPACK_RPM_PACKAGE_REQUIRES_PREUN "/sbin/ldconfig")
 
 include(CPack)
+
+add_custom_target(package_src_target
+    COMMAND "${CMAKE_COMMAND}" --build . --target package_source
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    COMMENT "Package Build"
+    DEPENDS build_bindings_cybind 
+    VERBATIM
+)
 # End Installation definitions
+
+

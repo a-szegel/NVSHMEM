@@ -80,6 +80,9 @@ int nvshmemi_transport_init(nvshmemi_state_t *state) {
             transports[index]->log2_cumem_granularity =
                 nvshmemi_state->heap_obj->get_log2_cumem_granularity();
             transports[index]->cache_handle = tmp_cache_ptr;
+            // No need for alias VA map for P2P transport
+            transports[index]->alias_va_map = nullptr;
+            transports[index]->egm_map = nullptr;
             if (transports[index]->max_op_len == 0) transports[index]->max_op_len = SIZE_MAX;
             index++;
         } else {
@@ -209,6 +212,8 @@ transport_init:
         transports[index]->my_pe = nvshmemi_state->mype;
         transports[index]->n_pes = nvshmemi_state->npes;
         transports[index]->cache_handle = (void *)tmp_cache_ptr;
+        transports[index]->alias_va_map = state->heap_obj->get_alias_va_map();
+        transports[index]->egm_map = state->heap_obj->get_egm_map();
         if (transports[index]->max_op_len == 0) transports[index]->max_op_len = SIZE_MAX;
         state->atomic_host_endian_min_size = transports[index]->atomic_host_endian_min_size;
         index++;
@@ -266,6 +271,8 @@ transport_fail:
             transports[index]->my_pe = nvshmemi_state->mype;
             transports[index]->n_pes = nvshmemi_state->npes;
             transports[index]->cache_handle = (void *)tmp_cache_ptr;
+            transports[index]->alias_va_map = state->heap_obj->get_alias_va_map();
+            transports[index]->egm_map = state->heap_obj->get_egm_map();
             nvshmemi_ibgda_get_device_state(&transports[index]->type_specific_shared_state);
             if (transports[index]->max_op_len == 0) transports[index]->max_op_len = SIZE_MAX;
             state->atomic_host_endian_min_size = transports[index]->atomic_host_endian_min_size;
@@ -294,6 +301,19 @@ out:
             nvshmemi_local_mem_cache_fini(
                 (nvshmem_local_buf_cache_t *)transports[idx]->cache_handle);
         }
+    } else {
+        if (transport_lib) {
+            INFO(NVSHMEM_INIT, "Successfully initialized the transport: %s",
+                 nvshmemi_options.REMOTE_TRANSPORT);
+        }
+#ifdef NVSHMEM_IBGDA_SUPPORT
+        if (transport_lib_IBGDA) {
+            INFO(NVSHMEM_INIT,
+                 "Successfully initialized the transport: IBGDA. It will be used for device-side "
+                 "APIs over IB.",
+                 nvshmemi_options.REMOTE_TRANSPORT);
+        }
+#endif
     }
     return status;
 }

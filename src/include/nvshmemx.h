@@ -10,17 +10,21 @@
  * See COPYRIGHT.txt for license information
  */
 
+#include "non_abi/nvshmem_build_options.h"
+
 #ifndef _NVSHMEMX_H_
 #define _NVSHMEMX_H_
 
 /* NVRTC only compiles device code. Leave out host headers */
 #if !defined __CUDACC_RTC__ && !defined __clang_llvm_bitcode_lib__
 #include "host/nvshmemx_api.h"
+#include "device/tile/nvshmemx_tile_api.hpp"
 #include "device/nvshmemx_collective_launch_apis.h"
 #endif
-#if !defined NVSHMEM_BITCODE_APPLICATION
+#if !defined NVSHMEM_HOSTLIB_ONLY
 #include "device/nvshmemx_defines.h"
 #include "device/nvshmemx_coll_defines.cuh"
+#include "device/tile/nvshmemx_tile_api_defines.cuh"
 #endif
 
 #endif

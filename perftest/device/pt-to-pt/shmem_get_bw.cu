@@ -87,9 +87,14 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "This test requires exactly two processes \n");
         goto finalize;
     }
-
-    data_d = (double *)nvshmem_malloc(max_size);
-    CUDA_CHECK(cudaMemset(data_d, 0, max_size));
+    if (use_mmap) {
+        data_d = (double *)allocate_mmap_buffer(max_size, mem_handle_type, use_egm, true);
+        DEBUG_PRINT("Allocated mmap buffer\n");
+    } else {
+        data_d = (double *)nvshmem_malloc(max_size);
+        DEBUG_PRINT("Allocated nvshmem malloc buffer\n");
+        CUDA_CHECK(cudaMemset(data_d, 0, max_size));
+    }
 
     array_size = max_size_log;
     alloc_tables(&h_tables, 2, array_size);
@@ -107,8 +112,8 @@ int main(int argc, char *argv[]) {
         memset(h_bw_total, 0, sizeof(double) * array_size);
 
         /* Allocate on GPU. */
-        CUDA_CHECK(cudaMalloc((void **)&d_bw, sizeof(double)));
-        CUDA_CHECK(cudaMalloc((void **)&d_bw_sum, sizeof(double)));
+        d_bw = (double *)nvshmem_malloc(sizeof(double));
+        d_bw_sum = (double *)nvshmem_malloc(sizeof(double));
     }
 
     CUDA_CHECK(cudaMalloc((void **)&counter_d, sizeof(unsigned int) * 2));
@@ -138,12 +143,9 @@ int main(int argc, char *argv[]) {
 
             /* Sum all h_bw of each PE for bidirectional mode. */
             if (bidirectional) {
-                CUDA_CHECK(cudaMemcpy(d_bw, &h_bw[i], sizeof(double), cudaMemcpyHostToDevice));
+                CUDA_CHECK(cudaMemcpy(d_bw, &h_bw[i], sizeof(double), cudaMemcpyDefault));
                 nvshmem_double_sum_reduce(NVSHMEM_TEAM_WORLD, d_bw_sum, d_bw, 1);
-                CUDA_CHECK(
-                    cudaMemcpy(&h_bw_total[i], d_bw_sum, sizeof(double), cudaMemcpyDeviceToHost));
-                CUDA_CHECK(
-                    cudaMemcpy(&h_bw_total[i], d_bw_sum, sizeof(double), cudaMemcpyDeviceToHost));
+                CUDA_CHECK(cudaMemcpy(&h_bw_total[i], d_bw_sum, sizeof(double), cudaMemcpyDefault));
             }
 
             i++;
@@ -163,10 +165,16 @@ int main(int argc, char *argv[]) {
 
 finalize:
 
-    if (data_d) nvshmem_free(data_d);
+    if (data_d) {
+        if (use_mmap) {
+            free_mmap_buffer(data_d);
+        } else {
+            nvshmem_free(data_d);
+        }
+    }
     if (h_bw_total) free(h_bw_total);
-    if (d_bw) cudaFree(d_bw);
-    if (d_bw_sum) cudaFree(d_bw_sum);
+    if (d_bw) nvshmem_free(d_bw);
+    if (d_bw_sum) nvshmem_free(d_bw_sum);
     free_tables(h_tables, 2);
     finalize_wrapper();
 

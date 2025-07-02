@@ -245,9 +245,16 @@ def thread_func(cmd_line, ftesto, fteste):
 
 @display_time
 def run_cmd(cmd_line, test_path, timeout, ftesto, fteste):
+  if 'PERF_TEST_CMD_AHEAD' in os.environ:
+    cmd_line = os.environ['PERF_TEST_CMD_AHEAD'].split() + cmd_line
+
+  if 'PERF_TEST_CMD_LAST' in os.environ:
+    cmd_line = cmd_line + os.environ['PERF_TEST_CMD_LAST'].split()
+
   th = Thread(target=thread_func, args=(cmd_line, ftesto, fteste))
   th.start()
   th.join(timeout)
+
   if th.is_alive():
     # Popen(['echo', 'Timed out ' + ' '.join([str(elem) for elem in cmd_line]) + '\r\n'], stdout=fteste)
     fteste.write('Timed out ' + ' '.join([str(elem) for elem in cmd_line]) + '\r\n')
@@ -301,7 +308,7 @@ def run_cmd_vary_pes(cmd_line_prefix, cmd_line_suffix, test_install_path, full_t
       ppn = 1
       npe_all = 2
     run_cmd_given_pes(cmd_line_prefix, cmd_line_suffix, test_install_path, full_test_path, npe_all, ppn, timeout, launcher_choice, ftesto, fteste)
-  elif 'coll' in full_test_path or 'init' in full_test_path:
+  else:
     if nhosts == 1:
       npe_range_ = npe_range[1:]
     else:
@@ -353,6 +360,13 @@ def enumerate_env_lines(env_combs, cmd_line_suffix, nvshmem_install_path, test_i
   else:
     bootstrap_str = "NVSHMEMTEST_USE_MPI_LAUNCHER=1"
 
+  if 'PERF_TEST_MPIRUN_EXTRA' in os.environ:
+    MPIRUN_EXTRA = os.environ['PERF_TEST_MPIRUN_EXTRA']
+    MPIRUN_EXTRA_LIST = MPIRUN_EXTRA.split()
+  else:
+    MPIRUN_EXTRA = ""
+    MPIRUN_EXTRA_LIST = []
+
   if env_combs:
     for combidx in range(0, len(env_combs)):
       if launcher_choice == NVSHMEM_LAUNCHER:
@@ -372,6 +386,7 @@ def enumerate_env_lines(env_combs, cmd_line_suffix, nvshmem_install_path, test_i
         run_cmd_vary_pes(cmd_line_prefix, cmd_line_suffix, test_install_path, full_test_path, npe_range, nhosts, timeout, launcher_choice, ftesto, fteste)
       if launcher_choice == MPI_LAUNCHER:
         cmd_line_prefix = [mpi_install_path+'/bin/mpirun', '--mca', 'btl', '^uct', '--allow-run-as-root', '-oversubscribe', '--bind-to', QA_BIND_TO, '-x', 'LD_LIBRARY_PATH='+cuda_install_path+'/lib64:'+gdrcopy_install_path+nccl_install_lib+pmix_install_lib+':'+nvshmem_install_path+'/lib'+':$LD_LIBRARY_PATH', '-x', bootstrap_str , '--host', hosts]
+        cmd_line_prefix[1:1] = MPIRUN_EXTRA_LIST
         extra_parameters = extra_parameters_string.split()
         first_x = cmd_line_prefix.index("-x")
         for item in extra_parameters[::-1]:
@@ -408,6 +423,7 @@ def enumerate_env_lines(env_combs, cmd_line_suffix, nvshmem_install_path, test_i
       run_cmd_vary_pes(cmd_line_prefix, cmd_line_suffix, test_install_path, full_test_path, npe_range, nhosts, timeout, launcher_choice, ftesto, fteste)
     if launcher_choice == MPI_LAUNCHER:
       cmd_line_prefix = [mpi_install_path+'/bin/mpirun', '--mca', 'btl', '^uct', '--allow-run-as-root', '-oversubscribe', '--bind-to', QA_BIND_TO, '-x', 'LD_LIBRARY_PATH='+cuda_install_path+'/lib64:'+gdrcopy_install_path+nccl_install_lib+pmix_install_lib+':'+nvshmem_install_path+'/lib'+':$LD_LIBRARY_PATH', '-x', bootstrap_str, '--host', hosts, '-n']
+      cmd_line_prefix[1:1] = MPIRUN_EXTRA_LIST
       extra_parameters = extra_parameters_string.split()
       first_x = cmd_line_prefix.index("-x")
       for item in extra_parameters[::-1]:

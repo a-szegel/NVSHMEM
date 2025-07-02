@@ -60,6 +60,8 @@ struct nvshmemt_ibv_function_table {
                       struct ibv_port_attr *port_attr);
     struct ibv_pd *(*alloc_pd)(struct ibv_context *context);
     struct ibv_mr *(*reg_mr)(struct ibv_pd *pd, void *addr, size_t length, int access);
+    struct ibv_mr *(*reg_mr_iova)(struct ibv_pd *pd, void *addr, size_t length, uint64_t hca_va,
+                                  int access);
     struct ibv_mr *(*reg_dmabuf_mr)(struct ibv_pd *pd, uint64_t offset, size_t length,
                                     uint64_t iova, int fd, int access);
     int (*dereg_mr)(struct ibv_mr *mr);
@@ -86,7 +88,7 @@ int nvshmemt_ib_common_reg_mem_handle(struct nvshmemt_ibv_function_table *ftable
                                       nvshmem_mem_handle_t *mem_handle, void *buf, size_t length,
                                       bool local_only, bool dmabuf_support,
                                       struct nvshmemi_cuda_fn_table *table, int log_level,
-                                      bool relaxed_ordering);
+                                      bool relaxed_ordering, void *alias_va_ptr = NULL);
 
 int nvshmemt_ib_common_release_mem_handle(struct nvshmemt_ibv_function_table *ftable,
                                           nvshmem_mem_handle_t *mem_handle, int log_level);
@@ -244,6 +246,10 @@ static int ib_roce_get_version_num(const char *deviceName, int portNum, int gidI
     close(fd);
 
     if (ret == -1) {
+        // In containerized environments, read could return EINVAL if the GID index is not mapped to
+        // the container sysfs. In this case return NVSHMEMX_SUCCESS and let the caller move to next
+        // GID index.
+        if (errno == EINVAL) return NVSHMEMX_SUCCESS;
         NVSHMEMI_WARN_PRINT("IB: read failed in ib_roce_get_version_num: %s", strerror(errno));
         return NVSHMEMX_ERROR_INTERNAL;
     }
@@ -280,7 +286,7 @@ static void update_gid_index(struct nvshmemt_ibv_function_table *ftable,
             return;
         }
         int usrRoceVer = roceVer;
-        int gidRoceVerNum, gidRoceVerNumCandidate;
+        int gidRoceVerNum, gidRoceVerNumCandidate = -1;
         const char *deviceName = ftable->get_device_name(context->device);
         ib_roce_get_version_num(deviceName, portNum, *gidIndex, &gidRoceVerNum);
         ib_roce_get_version_num(deviceName, portNum, gidIndexCandidate, &gidRoceVerNumCandidate);

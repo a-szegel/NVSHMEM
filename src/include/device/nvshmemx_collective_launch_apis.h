@@ -15,9 +15,11 @@
 
 #include <cuda_runtime.h>
 
+#if !defined __CUDACC_RTC__
 int nvshmemx_collective_launch(const void *func, dim3 gridDims, dim3 blockDims, void **args,
                                size_t sharedMem, cudaStream_t stream);
 int nvshmemx_collective_launch_query_gridsize(const void *func, dim3 blockDims, void **args,
                                               size_t sharedMem, int *gridsize);
+#endif
 
 #endif

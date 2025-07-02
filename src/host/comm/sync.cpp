@@ -90,8 +90,11 @@ void nvshmemi_signal_op_on_stream(uint64_t *sig_addr, uint64_t signal, int sig_o
         nvshmemi_state->heap_obj->get_local_pe_base()[pe] != NULL) {
         void *peer_addr;
         NVSHMEMU_MAPPED_PTR_TRANSLATE(peer_addr, sig_addr, pe)
-        if (nvshmemi_can_use_cuda_64_bit_stream_memops &&
-            nvshmemi_job_connectivity == NVSHMEMI_JOB_GPU_LDST_ATOMICS &&
+        // cuStreamWriteValue64 currently fails with EGM memory, so disabling it
+        // on detecting EGM address. TODO: Remove this constraint once the
+        // issue is fixed.
+        if (!nvshmemi_state->heap_obj->is_egm((void *)sig_addr) &&
+            nvshmemi_can_use_cuda_64_bit_stream_memops &&
             CUPFN(nvshmemi_cuda_syms, cuStreamWriteValue64)) {
             status = CUPFN(nvshmemi_cuda_syms,
                            cuStreamWriteValue64(cstrm, (CUdeviceptr)peer_addr, signal, 0));

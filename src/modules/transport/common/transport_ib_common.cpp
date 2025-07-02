@@ -26,6 +26,9 @@ int nvshmemt_ib_common_nv_peer_mem_available() {
     if (access("/sys/kernel/mm/memory_peers/nvidia-peermem/version", F_OK) == 0) {
         return NVSHMEMX_SUCCESS;
     }
+    if (access("/sys/module/nvidia_peermem/version", F_OK) == 0) {
+        return NVSHMEMX_SUCCESS;
+    }
 
     return NVSHMEMX_ERROR_INTERNAL;
 }
@@ -34,7 +37,7 @@ int nvshmemt_ib_common_reg_mem_handle(struct nvshmemt_ibv_function_table *ftable
                                       nvshmem_mem_handle_t *mem_handle, void *buf, size_t length,
                                       bool local_only, bool dmabuf_support,
                                       struct nvshmemi_cuda_fn_table *table, int log_level,
-                                      bool relaxed_ordering) {
+                                      bool relaxed_ordering, void *alias_va_ptr) {
     struct nvshmemt_ib_common_mem_handle *handle =
         (struct nvshmemt_ib_common_mem_handle *)mem_handle;
     struct ibv_mr *mr = NULL;
@@ -90,12 +93,21 @@ int nvshmemt_ib_common_reg_mem_handle(struct nvshmemt_ibv_function_table *ftable
     reg_dmabuf_failure:
 
         handle->fd = 0;
-        mr = ftable->reg_mr(pd, buf, length,
-                            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
-                                IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC | ro_flag);
+        if (alias_va_ptr) {
+            mr = ftable->reg_mr_iova(pd, alias_va_ptr, length, (uint64_t)buf,
+                                     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
+                                         IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC |
+                                         ro_flag);
+            INFO(log_level, "ibv_reg_mr_iova handle %p handle->mr %p", handle, handle->mr);
+        } else {
+            mr = ftable->reg_mr(pd, buf, length,
+                                IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
+                                    IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC | ro_flag);
+            INFO(log_level, "ibv_reg_mr handle %p handle->mr %p", handle, handle->mr);
+        }
+
         NVSHMEMI_NULL_ERROR_JMP(mr, status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
                                 "mem registration failed. Reason: %s\n", strerror(errno));
-        INFO(log_level, "ibv_reg_mr handle %p handle->mr %p", handle, handle->mr);
     }
 
     handle->buf = buf;
@@ -162,6 +174,7 @@ int nvshmemt_ibv_ftable_init(void **ibv_handle, struct nvshmemt_ibv_function_tab
     LOAD_SYM(*ibv_handle, "ibv_query_device", ftable->query_device);
     LOAD_SYM(*ibv_handle, "ibv_alloc_pd", ftable->alloc_pd);
     LOAD_SYM(*ibv_handle, "ibv_reg_mr", ftable->reg_mr);
+    LOAD_SYM(*ibv_handle, "ibv_reg_mr_iova", ftable->reg_mr_iova);
     LOAD_SYM(*ibv_handle, "ibv_reg_dmabuf_mr", ftable->reg_dmabuf_mr);
     LOAD_SYM(*ibv_handle, "ibv_dereg_mr", ftable->dereg_mr);
     LOAD_SYM(*ibv_handle, "ibv_create_cq", ftable->create_cq);

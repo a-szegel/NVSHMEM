@@ -15,8 +15,9 @@
 
 #include <cuda_runtime.h>
 
+#if defined __CUDACC__
 #define NVSHMEMI_COMM_DEVICE_UTILS_USE_PTX
-
+#endif
 #define NTOH64(x)                                                             \
     *x = ((*(x)&0xFF00000000000000) >> 56 | (*(x)&0x00FF000000000000) >> 40 | \
           (*(x)&0x0000FF0000000000) >> 24 | (*(x)&0x000000FF00000000) >> 8 |  \
@@ -28,6 +29,8 @@
           (*(x)&0x000000FF) << 24)
 
 #ifdef NVSHMEMI_COMM_DEVICE_UTILS_USE_PTX
+
+#if defined __CUDACC__
 
 __device__ static inline uint64_t BSWAP64(uint64_t x) {
     uint64_t ret;
@@ -82,6 +85,8 @@ __device__ static inline uint16_t BSWAP16(uint16_t x) {
     ret = (uint16_t)d;
     return ret;
 }
+
+#endif /*! __CUDACC__ */
 
 #else /* NVSHMEMI_COMM_DEVICE_UTILS_USE_PTX */
 

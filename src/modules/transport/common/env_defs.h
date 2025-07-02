@@ -63,6 +63,10 @@ NVSHMEMI_ENV_DEF(IB_SL, int, 0, NVSHMEMI_ENV_CAT_TRANSPORT, "Service level to us
 NVSHMEMI_ENV_DEF(
     IB_ENABLE_RELAXED_ORDERING, bool, true, NVSHMEMI_ENV_CAT_TRANSPORT,
     "Enable PCIe relaxed ordering on transports over IB/ROCE (e.g., IBRC, IBGDA, IBDEVX)")
+NVSHMEMI_ENV_DEF(IB_NUM_RC_PER_DEVICE, int, 1, NVSHMEMI_ENV_CAT_TRANSPORT,
+                 "Number of RC qpairs to create per device in the IB proxy-based transports."
+                 "A device is each enumerated IB device, either a full HCA or a single port of a "
+                 "multi-port HCA.")
 
 NVSHMEMI_ENV_DEF(HCA_LIST, string, "", NVSHMEMI_ENV_CAT_TRANSPORT,
                  "Comma-separated list of HCAs to use in the NVSHMEM application. Entries "

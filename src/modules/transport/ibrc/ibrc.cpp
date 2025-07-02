@@ -65,7 +65,7 @@ int ibrc_qp_depth;
 #error Unknown cache line size
 #endif
 
-#define MAX_NUM_HCAS 16
+#define MAX_NUM_HCAS 48
 #define MAX_NUM_PORTS 4
 #define MAX_NUM_PES_PER_NODE 32
 #ifdef NVSHMEM_USE_GDRCOPY
@@ -149,8 +149,9 @@ typedef struct {
     int *dev_ids;
     int *port_ids;
     int n_dev_ids;
-    int proxy_ep_idx;
     int ep_count;
+    int host_ep_index;
+    int cur_ep_idx;
     int selected_dev_id;
     int log_level;
     bool dmabuf_support;
@@ -189,6 +190,7 @@ static volatile uint64_t atomics_processed = 0;
 static volatile uint64_t atomics_issued = 0;
 static volatile uint64_t atomics_completed = 0;
 static volatile uint64_t atomics_acked = 0;
+static bool is_egm = false;
 #endif
 
 static struct nvshmemt_ibv_function_table ftable;
@@ -480,10 +482,10 @@ int setup_cst_loopback(nvshmem_transport_t t, transport_ibrc_state_t *ibrc_state
 out:
     return status;
 }
-int nvshmemt_ibrc_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
-                                 nvshmem_mem_handle_t *mem_handle_in, void *buf, size_t length,
+int nvshmemt_ibrc_get_mem_handle(nvshmem_mem_handle_t *mem_handle, void *buf, size_t length,
                                  nvshmem_transport_t t, bool local_only) {
     int status = 0;
+    void *curr_ptr;
     struct nvshmem_transport *transport = (struct nvshmem_transport *)t;
     transport_ibrc_state_t *ibrc_state = (transport_ibrc_state_t *)transport->state;
     struct ibrc_device *device = ((struct ibrc_device *)ibrc_state->devices +
@@ -491,9 +493,25 @@ int nvshmemt_ibrc_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
     struct ibrc_mem_handle_info *handle_info = NULL;
     struct nvshmemt_ib_common_mem_handle *handle;
 
+    /*
+     * In cases where same physical memory has been mapped to multiple VAs (say VA1 and VA2)
+     * e.g., user buffers mmapped into symmetric heap. Using VA2 for buffer registration
+     * and gdrcopy.pin_buffer is unsupported in RM/nv-p2p (Ref nvbug 507809).
+     * We need to use VA1 (first mapped address mapped) as a work around.
+     * For an mmapped buffer, buf is VA2, we track the VA2->VA1 mapping during mmap call
+     * alias_va_ptr will hold the VA1 address, if applicable
+     */
+    void *alias_va_ptr = NULL;
+    if (transport->alias_va_map != NULL && transport->alias_va_map->count(buf)) {
+        INFO(ibrc_state->log_level, "IBRC: alias va found for buf: %p, alias va: %p", buf,
+             transport->alias_va_map->operator[](buf));
+        alias_va_ptr = transport->alias_va_map->operator[](buf);
+    }
+
     status = nvshmemt_ib_common_reg_mem_handle(
         &ftable, device->pd, mem_handle, buf, length, local_only, ibrc_state->dmabuf_support,
-        ibrc_state->table, ibrc_state->log_level, ibrc_state->options->IB_ENABLE_RELAXED_ORDERING);
+        ibrc_state->table, ibrc_state->log_level, ibrc_state->options->IB_ENABLE_RELAXED_ORDERING,
+        alias_va_ptr);
     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
                           "Unable to register memory handle.");
 
@@ -510,9 +528,20 @@ int nvshmemt_ibrc_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
     }
 
 #ifdef NVSHMEM_USE_GDRCOPY
-    if (use_gdrcopy && !local_only) {
-        status =
-            gdrcopy_ftable.pin_buffer(gdr_desc, (unsigned long)buf, length, 0, 0, &handle_info->mh);
+    /* we track if the memory handle is EGM based so that GDRCOPY can be disabled*/
+    is_egm = check_egm(buf, transport->egm_map);
+    if (use_gdrcopy && !local_only && !is_egm) {
+        void *gdr_buf = buf;
+
+        // if applicable, alias_va_ptr (VA1) is only used for pin_buffer() and
+        // computing the offset below off = gdr_buf - info.va
+        // We use "buf" (VA2) everywhere else
+        if (alias_va_ptr != NULL) {
+            gdr_buf = alias_va_ptr;
+        }
+
+        status = gdrcopy_ftable.pin_buffer(gdr_desc, (unsigned long)gdr_buf, length, 0, 0,
+                                           &handle_info->mh);
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "gdrcopy pin_buffer failed \n");
 
         status = gdrcopy_ftable.map(gdr_desc, handle_info->mh, &handle_info->cpu_ptr_base, length);
@@ -526,7 +555,7 @@ int nvshmemt_ibrc_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
         // calculate the offset from the head of the mapping to the
         // beginning of the buffer
         uintptr_t off;
-        off = (uintptr_t)buf - info.va;
+        off = (uintptr_t)gdr_buf - info.va;
         handle_info->cpu_ptr = (void *)((uintptr_t)handle_info->cpu_ptr_base + off);
     }
 #endif
@@ -538,13 +567,23 @@ int nvshmemt_ibrc_get_mem_handle(nvshmem_mem_handle_t *mem_handle,
      * mem handle info when using the dynamic heap.
      */
     if (!local_only) {
-        if (!ibrc_state->cache) {
-            status = nvshmemt_mem_handle_cache_init(t, &ibrc_state->cache);
+        // get_mem_handle is called on chunk size upto 2GB (MAX_HANDLE_LEN) but
+        // is tracked at cumem granularity (typically 512 MB), so if buffer size
+        // is > 512 MB, we need to split them to ensure entries beyond first 512 MB
+        // are added to cache.
+        curr_ptr = buf;
+        do {
+            if (!ibrc_state->cache) {
+                status = nvshmemt_mem_handle_cache_init(t, &ibrc_state->cache);
+                NVSHMEMI_NZ_ERROR_JMP(status, status, out,
+                                      "Unable to initialize mem handle cache in IB transport.");
+            }
+            status =
+                nvshmemt_mem_handle_cache_add(t, ibrc_state->cache, curr_ptr, (void *)handle_info);
             NVSHMEMI_NZ_ERROR_JMP(status, status, out,
-                                  "Unable to initialize mem handle cache in IB transport.");
-        }
-        status = nvshmemt_mem_handle_cache_add(t, ibrc_state->cache, buf, (void *)handle_info);
-        NVSHMEMI_NZ_ERROR_JMP(status, status, out, "Unable to cache mem handle in IB transport.");
+                                  "Unable to cache mem handle in IB transport.");
+            curr_ptr = (char *)curr_ptr + (1ULL << t->log2_cumem_granularity);
+        } while (curr_ptr < (char *)buf + length);
     }
 
     if (!dummy_local_mem) {
@@ -580,6 +619,7 @@ int nvshmemt_ibrc_release_mem_handle(nvshmem_mem_handle_t *mem_handle, nvshmem_t
     struct ibrc_mem_handle_info *handle_info = NULL;
     transport_ibrc_state_t *state;
     void *addr;
+    void *curr_ptr;
     int status = 0;
 
     state = (transport_ibrc_state_t *)t->state;
@@ -596,7 +636,10 @@ int nvshmemt_ibrc_release_mem_handle(nvshmem_mem_handle_t *mem_handle, nvshmem_t
 
     if (handle_info) {
 #ifdef NVSHMEM_USE_GDRCOPY
-        if (use_gdrcopy) {
+        /* we track if the memory handle is EGM based so that GDRCOPY can be disabled*/
+        is_egm = check_egm(addr, t->egm_map);
+
+        if (use_gdrcopy && !is_egm) {
             status = gdrcopy_ftable.unmap(gdr_desc, handle_info->mh, handle_info->cpu_ptr_base,
                                           handle_info->size);
             NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "gdr_unmap failed\n");
@@ -606,7 +649,13 @@ int nvshmemt_ibrc_release_mem_handle(nvshmem_mem_handle_t *mem_handle, nvshmem_t
         }
 #endif
 
-        if (state->cache != NULL) nvshmemt_mem_handle_cache_remove(t, state->cache, addr);
+        if (state->cache != NULL) {
+            curr_ptr = addr;
+            do {
+                nvshmemt_mem_handle_cache_remove(t, state->cache, curr_ptr);
+                curr_ptr = (char *)curr_ptr + (1ULL << t->log2_cumem_granularity);
+            } while (curr_ptr < (char *)addr + handle_info->size);
+        }
         free(handle_info);
     }
 out:
@@ -650,7 +699,9 @@ int nvshmemt_ibrc_finalize(nvshmem_transport_t transport) {
             (struct ibrc_mem_handle_info *)nvshmemt_mem_handle_cache_get_by_idx(state->cache, i);
         if (handle_info) {
 #ifdef NVSHMEM_USE_GDRCOPY
-            if (use_gdrcopy) {
+            /* we track if the memory handle is EGM based so that GDRCOPY can be disabled*/
+            is_egm = check_egm(handle_info->ptr, transport->egm_map);
+            if (use_gdrcopy && !is_egm) {
                 status = gdrcopy_ftable.unmap(gdr_desc, handle_info->mh, handle_info->cpu_ptr_base,
                                               handle_info->size);
                 NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "gdr_unmap failed\n");
@@ -1096,6 +1147,13 @@ out:
     return status;
 }
 
+int get_and_inc_cur_ep_idx(transport_ibrc_state_t *ibrc_state) {
+    ibrc_state->cur_ep_idx++;
+    ibrc_state->cur_ep_idx =
+        ibrc_state->cur_ep_idx % (ibrc_state->ep_count - 1);  // compensate for host qp
+    return ibrc_state->cur_ep_idx;
+}
+
 int nvshmemt_ibrc_rma(struct nvshmem_transport *tcurr, int pe, rma_verb_t verb,
                       rma_memdesc_t *remote, rma_memdesc_t *local, rma_bytesdesc_t bytesdesc,
                       int is_proxy) {
@@ -1105,12 +1163,15 @@ int nvshmemt_ibrc_rma(struct nvshmem_transport *tcurr, int pe, rma_verb_t verb,
     struct ibrc_ep *ep;
     struct ibv_sge *sge;
     int op_id;
+    int cur_ep_idx;
 
     if (is_proxy) {
-        ep = ibrc_state->ep[(ibrc_state->ep_count * pe + ibrc_state->proxy_ep_idx)];
+        cur_ep_idx = get_and_inc_cur_ep_idx(ibrc_state);
     } else {
-        ep = ibrc_state->ep[(ibrc_state->ep_count * pe)];
+        cur_ep_idx = ibrc_state->host_ep_index;
     }
+    ep = ibrc_state->ep[(ibrc_state->ep_count * pe) + cur_ep_idx];
+    // start of post send sr thourgh ep qp
 
     status = check_poll_avail(ep, WAIT_ANY);
     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "check_poll failed \n");
@@ -1170,6 +1231,8 @@ int nvshmemt_ibrc_rma(struct nvshmem_transport *tcurr, int pe, rma_verb_t verb,
         check_poll_avail(ep, WAIT_ALL /*1*/);
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "check_poll failed \n");
     }
+    // end of post send sr thourgh ep qp
+
 out:
     return status;
 }
@@ -1185,9 +1248,9 @@ int nvshmemt_ibrc_amo(struct nvshmem_transport *tcurr, int pe, void *curetptr, a
     struct ibrc_atomic_op op;
 
     if (is_proxy) {
-        ep = ibrc_state->ep[(ibrc_state->ep_count * pe + ibrc_state->proxy_ep_idx)];
+        ep = ibrc_state->ep[(ibrc_state->ep_count * pe) + ibrc_state->cur_ep_idx];
     } else {
-        ep = ibrc_state->ep[(ibrc_state->ep_count * pe)];
+        ep = ibrc_state->ep[(ibrc_state->ep_count * pe) + ibrc_state->host_ep_index];
     }
 
     status = check_poll_avail(ep, WAIT_ANY);
@@ -1227,9 +1290,15 @@ int nvshmemt_ibrc_amo(struct nvshmem_transport *tcurr, int pe, void *curetptr, a
     }
 
 #ifdef NVSHMEM_USE_GDRCOPY
+    /* we track if the memory handle is EGM based so that GDRCOPY can be disabled*/
+    is_egm = check_egm(remote->remote_memdesc.ptr, tcurr->egm_map);
+    if (is_egm) {
+        INFO(ibrc_state->log_level, "IBRC: buf: %p is egm, not using gdrcopy for atomics\n",
+             remote->remote_memdesc.ptr);
+    }
     // if gdrcopy is available, use it for all atomics to guarantee
     // atomicity across different ops
-    if (use_gdrcopy) {
+    if (use_gdrcopy && !is_egm) {
         ibrc_mem_handle_info_t *mem_handle_info;
 
         // assuming GDRCopy availability is uniform on all nodes
@@ -1319,7 +1388,9 @@ int nvshmemt_ibrc_enforce_cst_at_target(struct nvshmem_transport *tcurr) {
     assert(mem_handle_info != NULL);
 
 #ifdef NVSHMEM_USE_GDRCOPY
-    if (use_gdrcopy) {
+    /* we track if the memory handle is EGM based so that GDRCOPY can be disabled*/
+    is_egm = check_egm(mem_handle_info->ptr, tcurr->egm_map);
+    if (use_gdrcopy && !is_egm) {
         int temp;
         gdrcopy_ftable.copy_from_mapping(mem_handle_info->mh, &temp, mem_handle_info->cpu_ptr,
                                          sizeof(int));
@@ -1365,24 +1436,31 @@ out:
 int nvshmemt_ibrc_quiet(struct nvshmem_transport *tcurr, int pe, int is_proxy) {
     transport_ibrc_state_t *ibrc_state = (transport_ibrc_state_t *)tcurr->state;
     struct ibrc_ep *ep;
+    int ep_idx = 0;
+    int max_ep = 0;
     int status = 0;
 
     if (is_proxy) {
-        ep = ibrc_state->ep[(pe * ibrc_state->ep_count + ibrc_state->proxy_ep_idx)];
+        max_ep = ibrc_state->ep_count * pe + ibrc_state->host_ep_index;
+        ep_idx = pe * ibrc_state->ep_count;
     } else {
-        ep = ibrc_state->ep[(pe * ibrc_state->ep_count)];
+        max_ep = ibrc_state->ep_count * pe + ibrc_state->ep_count;
+        ep_idx = ibrc_state->ep_count * pe + ibrc_state->host_ep_index;
     }
 
-    status = check_poll_avail(ep, WAIT_ALL /*1*/);
-    NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "check_poll failed \n");
+    for (; ep_idx < max_ep; ep_idx++) {
+        ep = ibrc_state->ep[ep_idx];
+        status = check_poll_avail(ep, WAIT_ALL /*1*/);
+        NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "check_poll failed \n");
 
 #ifdef NVSHMEM_USE_GDRCOPY
-    while (atomics_acked < atomics_issued) {
-        nvshmem_transport_t t = (nvshmem_transport_t)ep->transport;
-        status = progress_recv(tcurr, (transport_ibrc_state_t *)t->state);
-        NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "progress failed \n");
-    }
+        while (atomics_acked < atomics_issued) {
+            nvshmem_transport_t t = (nvshmem_transport_t)ep->transport;
+            status = progress_recv(tcurr, (transport_ibrc_state_t *)t->state);
+            NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "progress failed \n");
+        }
 #endif
+    }
 out:
     return status;
 }
@@ -1457,8 +1535,9 @@ int nvshmemt_ibrc_connect_endpoints(nvshmem_transport_t t, int *selected_dev_ids
     }
 
     /* allocate all EPs for transport, plus 1 for the proxy thread. */
-    ep_count = ibrc_state->ep_count = MAX_TRANSPORT_EP_COUNT + 1;
-    ibrc_state->proxy_ep_idx = MAX_TRANSPORT_EP_COUNT;
+    ep_count = ibrc_state->ep_count = ibrc_state->options->IB_NUM_RC_PER_DEVICE + 1;
+    ibrc_state->host_ep_index = ibrc_state->options->IB_NUM_RC_PER_DEVICE;
+    ibrc_state->cur_ep_idx = 0;
 
     ibrc_state->selected_dev_id = selected_dev_ids[0];
 
@@ -1802,12 +1881,15 @@ int nvshmemt_init(nvshmem_transport_t *t, struct nvshmemi_cuda_fn_table *table, 
     transport->host_ops.release_mem_handle = nvshmemt_ibrc_release_mem_handle;
     transport->host_ops.rma = nvshmemt_ibrc_rma;
     transport->host_ops.amo = nvshmemt_ibrc_amo;
-    transport->host_ops.fence = NULL;
+    if (ibrc_state->options->IB_NUM_RC_PER_DEVICE > 1) {
+        transport->host_ops.fence = nvshmemt_ibrc_quiet;
+    } else {
+        transport->host_ops.fence = NULL;
+    }
     transport->host_ops.quiet = nvshmemt_ibrc_quiet;
     transport->host_ops.finalize = nvshmemt_ibrc_finalize;
     transport->host_ops.show_info = nvshmemt_ibrc_show_info;
     transport->host_ops.progress = nvshmemt_ibrc_progress;
-    transport->host_ops.psig = nvshmemt_put_signal;
 
     transport->host_ops.enforce_cst = nvshmemt_ibrc_enforce_cst_at_target;
 #if !defined(NVSHMEM_PPC64LE) && !defined(NVSHMEM_AARCH64)

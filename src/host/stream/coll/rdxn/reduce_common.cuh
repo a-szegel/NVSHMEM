@@ -30,12 +30,22 @@ template <typename TYPE, rdxn_ops_t OP>
 void nvshmemi_call_rdxn_on_stream_kernel(nvshmem_team_t team, TYPE *dest, const TYPE *source,
                                          size_t nreduce, cudaStream_t stream) {
     int tmp;
+    int in_cuda_graph = 0;
     std::pair<std::string, rdxn_ops_t> map_pair(std::string(typeid(TYPE).name()), OP);
     if (nvshmemi_reduce_maxblocksize.find(map_pair) == nvshmemi_reduce_maxblocksize.end()) {
         CUDA_RUNTIME_CHECK(cudaOccupancyMaxPotentialBlockSize(
             &tmp, (int *)&nvshmemi_reduce_maxblocksize[map_pair], rdxn_on_stream_kernel<TYPE, OP>));
     }
     size_t num_threads_per_block = nvshmemi_reduce_maxblocksize[map_pair];
+
+    /* Use env to override the value */
+    if (nvshmemi_options.REDUCE_NTHREADS_provided) {
+        num_threads_per_block = nvshmemi_options.REDUCE_NTHREADS;
+    }
+
+    cudaStreamCaptureStatus status;
+    CUDA_RUNTIME_CHECK(cudaStreamIsCapturing(stream, &status));
+    if (status == cudaStreamCaptureStatusActive) in_cuda_graph = 1;
 
     nvshmemi_team_t *teami = nvshmemi_team_pool[team];
     int num_blocks = 1;
@@ -75,8 +85,8 @@ void nvshmemi_call_rdxn_on_stream_kernel(nvshmem_team_t team, TYPE *dest, const 
         CUDA_RUNTIME_CHECK(cudaDeviceSynchronize());
     }
 
-    rdxn_on_stream_kernel<TYPE, OP>
-        <<<num_blocks, num_threads_per_block, 0, stream>>>(team, dest, source, nreduce);
+    rdxn_on_stream_kernel<TYPE, OP><<<num_blocks, num_threads_per_block, 0, stream>>>(
+        team, dest, source, nreduce, in_cuda_graph);
     CUDA_RUNTIME_CHECK(cudaGetLastError());
 }
 

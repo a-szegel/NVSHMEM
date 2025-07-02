@@ -2,6 +2,7 @@
 #define NVSHMEM_TYPES_H
 
 #define INIT_ARGS_PADDING 96
+#define TEAM_CONFIG_V2_PADDING 48
 #define TEAM_CONFIG_PADDING 56
 #define REDUCE_PADDING 32
 #define TIMEOUT_PADDING 16
@@ -31,6 +32,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <limits.h>
+
+#define NVSHMEM_TEAM_UNIQUID_INITIALIZER TEAM_ULSCALAR_INVALID
 
 #define nvshmemx_init_init_attr_ver_only(attr)                                     \
     do {                                                                           \
@@ -67,9 +70,24 @@
         }                                                                   \
     }
 
+#define NVSHMEMI_TEAM_CONFIG_VERSION_2_IDENTIFIER (2 << 16) + sizeof(nvshmem_team_config_t)
 #define NVSHMEMI_TEAM_CONFIG_INITIALIZER                              \
     {                                                                 \
-        (1 << 16) + sizeof(nvshmem_team_config_t), /* version */      \
+        NVSHMEMI_TEAM_CONFIG_VERSION_2_IDENTIFIER, /* version */      \
+            TEAM_CONFIG_SCALAR_INVALID,            /* num_contexts */ \
+            TEAM_ULSCALAR_INVALID,                 /* uniqueid */     \
+        {                                                             \
+            0                                                         \
+        }                                                             \
+    }
+#define NVSHMEM_TEAM_CONFIG_INITIALIZER NVSHMEMI_TEAM_CONFIG_INITIALIZER
+#define NVSHMEM_TEAM_CONFIG_MASK_NUM_CONTEXTS 0x0000000000000001
+#define NVSHMEM_TEAM_CONFIG_MASK_UNIQUEID 0x0000000000000002
+
+#define NVSHMEMI_TEAM_CONFIG_VERSION_1_IDENTIFIER (1 << 16) + sizeof(nvshmem_team_config_v1)
+#define NVSHMEMI_TEAM_CONFIG_V1_INITIALIZER                           \
+    {                                                                 \
+        NVSHMEMI_TEAM_CONFIG_VERSION_1_IDENTIFIER, /* version */      \
             TEAM_CONFIG_SCALAR_INVALID,            /* num_contexts */ \
         {                                                             \
             0                                                         \
@@ -196,6 +214,7 @@
 #include <cuda/std/climits>
 #endif
 
+typedef uint64_t nvshmemx_team_uniqueid_t;
 typedef int32_t nvshmem_team_t;
 typedef nvshmem_team_t nvshmemx_team_t;
 
@@ -240,11 +259,48 @@ typedef nvshmemi_reduce_recexch_v1 nvshmemi_reduce_recexch_t;
 typedef struct {
     int version;
     int num_contexts;
+    nvshmemx_team_uniqueid_t uniqueid;
+    char padding[TEAM_CONFIG_V2_PADDING];
+} nvshmem_team_config_v2;
+static_assert(sizeof(nvshmem_team_config_v2) == 64, "team_config_v2 must be 64 bytes.");
+
+typedef struct {
+    int version;
+    int num_contexts;
     char padding[TEAM_CONFIG_PADDING];
 } nvshmem_team_config_v1;
 static_assert(sizeof(nvshmem_team_config_v1) == 64, "team_config_v1 must be 64 bytes.");
 
-typedef nvshmem_team_config_v1 nvshmem_team_config_t;
+typedef nvshmem_team_config_v2 nvshmem_team_config_t;
+
+typedef struct {
+    int version;
+    int my_pe;
+    int start, stride, size;
+    int team_idx;
+    nvshmem_team_config_t config;
+    long config_mask;
+    void *nccl_comm; /* To be cast to ncclComm_t whenever used */
+    nvshmemi_reduce_recexch_t reduce_recexch;
+    size_t rdxn_count;
+    uint32_t ll_flag;
+    uint64_t alltoall_pwrk[2];
+    uint64_t alltoall_count;
+    uint64_t bcast_count;
+    uint64_t bcast_sync_offset;
+    uint64_t fcollect_count;
+    uint32_t fcollect_ll_flag;
+    bool are_gpus_p2p_connected;
+    bool is_team_node; /* If set to true, 'team_node' refers to rsvd NVSHMEMX_TEAM_NODE */
+    nvshmem_team_t team_node;
+    bool is_team_same_mype_node; /* If set to true, 'team_same_mype_node' refers to rsvd
+                                    NVSHMEMX_TEAM_SAME_MYPE_NODE */
+    nvshmem_team_t team_same_mype_node;
+    void *nvls_rsc;          /* To be cast to nvshmemi_nvls_rsc whenever used */
+    void *nvls_rsc_base_ptr; /* Shared b/w GPU threads of this team */
+    nvshmem_team_t team_dups[128];
+    int *pe_mapping; /* Pointer to the PE mapping array allocated after the struct */
+} nvshmemi_team_v3;
 
 typedef struct {
     int version;
@@ -300,8 +356,9 @@ typedef struct {
 } nvshmemi_team_v1;
 static_assert(sizeof(nvshmemi_team_v1) == 256, "team_v1 must be 256 bytes.");
 static_assert(sizeof(nvshmemi_team_v2) == 784, "team_v2 must be 784 bytes.");
+static_assert(sizeof(nvshmemi_team_v3) == 792, "team_v3 must be 792 bytes.");
 
-typedef nvshmemi_team_v2 nvshmemi_team_t;
+typedef nvshmemi_team_v3 nvshmemi_team_t;
 
 typedef struct {
     int version;

@@ -51,9 +51,11 @@ if(DEFINED CMAKE_CUDA_ARCHITECTURES_UNDEFINED)
     elseif(CUDAToolkit_VERSION_MAJOR EQUAL 11 AND CUDAToolkit_VERSION_MINOR LESS 8)
       set(CMAKE_CUDA_ARCHITECTURES "70-real;80" CACHE STRING "CUDA ARCHITECTURES" FORCE)
     elseif(CUDAToolkit_VERSION_MAJOR EQUAL 11 OR (CUDAToolkit_VERSION_MAJOR EQUAL 12 AND CUDAToolkit_VERSION_MINOR LESS 8))
-      set(CMAKE_CUDA_ARCHITECTURES "70-real;80-real;90" CACHE STRING "CUDA ARCHITECTURES" FORCE)
+      set(CMAKE_CUDA_ARCHITECTURES "70-real;80-real;89-real;90" CACHE STRING "CUDA ARCHITECTURES" FORCE)
+    elseif(CUDAToolkit_VERSION_MAJOR EQUAL 13)
+      set(CMAKE_CUDA_ARCHITECTURES "80-real;89-real;90-real;100-real;120" CACHE STRING "CUDA ARCHITECTURES" FORCE)
     else()
-      set(CMAKE_CUDA_ARCHITECTURES "70-real;80-real;90-real;100" CACHE STRING "CUDA ARCHITECTURES" FORCE)
+      set(CMAKE_CUDA_ARCHITECTURES "70-real;80-real;89-real;90-real;100-real;120" CACHE STRING "CUDA ARCHITECTURES" FORCE)
     endif()
   endif()
 endif()
@@ -61,6 +63,12 @@ message(STATUS "CMAKE_CUDA_ARCHITECTURES: ${CMAKE_CUDA_ARCHITECTURES}")
 message(STATUS "CMAKE_CUDA_COMPILER: ${CMAKE_CUDA_COMPILER}")
 message(STATUS "NVSHMEM_PREFIX: ${NVSHMEM_PREFIX}")
 message(STATUS "NVSHMEM_DEBUG: ${NVSHMEM_DEBUG}")
+
+if(CUDAToolkit_VERSION_MAJOR LESS 13)
+  set(LIB_CXX_STANDARD 11)
+else()
+  set(LIB_CXX_STANDARD 17)
+endif()
 
 install(
   EXPORT NVSHMEMDeviceTargets
@@ -87,7 +95,7 @@ set_target_properties(nvshmem_device
                       PROPERTIES POSITION_INDEPENDENT_CODE ON
                       CXX_STANDARD_REQUIRED ON
                       CUDA_STANDARD_REQUIRED ON
-                      CXX_STANDARD 11
+                      CXX_STANDARD "${LIB_CXX_STANDARD}"
                       CUDA_STANDARD 11
                       CUDA_SEPARABLE_COMPILATION ON
                       LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/../lib"
@@ -140,6 +148,11 @@ target_include_directories(
   INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../include>
             $<INSTALL_INTERFACE:include>
 )
+
+# from cuda 13.0, some headers have been moved to include/cccl
+if(CUDAToolkit_VERSION_MAJOR GREATER_EQUAL 13)
+  target_include_directories(nvshmem_device PUBLIC ${CUDAToolkit_INCLUDE_DIRS}/include/cccl)
+endif()
 
 if(NVSHMEM_ENABLE_ALL_DEVICE_INLINING)
   configure_file(../include/non_abi/device/pt-to-pt/transfer_device.cuh.in ${CMAKE_CURRENT_SOURCE_DIR}/../include/non_abi/device/pt-to-pt/transfer_device.cuh COPYONLY)

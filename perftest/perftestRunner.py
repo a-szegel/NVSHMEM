@@ -372,8 +372,32 @@ if __name__ == '__main__':
       "--cases", dest="cases", 
       required=False, help='case name list. Use comma join them. If use this option, script will ignore the list files in arguments.')
 
+    parser.add_argument(
+      "--mpirun_extra", nargs='?', dest="mpirun_extra",
+      required=False, help='Additional parameters added for the mpirun command line.')
+
+    parser.add_argument(
+      "--cmd_ahead", nargs='?', dest="cmd_ahead",
+      required=False, help='Additional parameters added before perftest commands, such as "CUDA_VISIBLE_DEVICES=0,2".')
+
+    parser.add_argument(
+      "--cmd_last", nargs='?', dest="cmd_last",
+      required=False, help='Additional parameters added after perftest commands, such as "--mmap --egm".')
+
     args = parser.parse_args()
     enable_skip = 0
+
+    if args.mpirun_extra is not None:
+      mpirun_extra = args.mpirun_extra
+      os.environ["PERF_TEST_MPIRUN_EXTRA"] = mpirun_extra
+
+    if args.cmd_ahead is not None:
+      cmd_ahead = args.cmd_ahead
+      os.environ["PERF_TEST_CMD_AHEAD"] = cmd_ahead
+
+    if args.cmd_last is not None:
+      cmd_last = args.cmd_last
+      os.environ["PERF_TEST_CMD_LAST"] = cmd_last
 
     # Args parser
     if args.bind_to_value is None:

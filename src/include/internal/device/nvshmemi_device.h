@@ -8,7 +8,9 @@
 #define _NVSHMEMI_DEVICE_STATE_H_
 
 #include <cuda_runtime.h>
+#if !defined __CUDACC_RTC__
 #include <stdio.h>
+#endif
 
 int nvshmemi_setup_collective_launch();
 int nvshmemi_teardown_collective_launch();

@@ -172,7 +172,7 @@ void nvshmemu_thread_cs_exit();
 
 int nvshmemu_get_num_gpus_per_node();
 
-uint64_t getHostHash();
+uint64_t nvshmemu_getHostHash();
 nvshmemResult_t nvshmemu_gethostname(char *hostname, int maxlen);
 void setup_sig_handler();
 char *nvshmemu_hexdump(void *ptr, size_t len);
@@ -208,11 +208,15 @@ void nvshmemi_ibgda_get_device_state(void **state);
 #define NVSHMEMU_FOR_EACH(__index, count) \
     for (uint64_t __index = 0; __index < (uint64_t)(count); __index++)
 #define NVSHMEMU_FOR_EACH_IF(x, count, condition, code) \
-    NVSHMEMU_FOR_EACH(x, count) {                       \
-        if ((condition)) {                              \
-            (code);                                     \
+    do {                                                \
+        NVSHMEMU_FOR_EACH(x, count) {                   \
+            if ((condition)) {                          \
+                do {                                    \
+                    code                                \
+                } while (0);                            \
+            }                                           \
         }                                               \
-    }
+    } while (0)
 #define NVSHMEMU_ROUND_UP(x, y) (((x) + (y)-1) / (y)) * (y)
 #define NVSHMEMU_HOST_PTR_FREE(ptr) \
     do {                            \

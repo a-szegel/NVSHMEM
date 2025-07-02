@@ -110,8 +110,14 @@ int main(int argc, char *argv[]) {
     h_size_arr = (uint64_t *)h_tables[0];
     h_bw = (double *)h_tables[1];
 
-    data_d = (double *)nvshmem_malloc(max_size);
-    CUDA_CHECK(cudaMemset(data_d, 0, max_size));
+    if (use_mmap) {
+        data_d = (double *)allocate_mmap_buffer(max_size, mem_handle_type, use_egm, true);
+        DEBUG_PRINT("Allocated mmap buffer\n");
+    } else {
+        data_d = (double *)nvshmem_malloc(max_size);
+        DEBUG_PRINT("Allocated nvshmem malloc buffer\n");
+        CUDA_CHECK(cudaMemset(data_d, 0, max_size));
+    }
 
     remote_d = (double *)nvshmem_ptr((void *)data_d, !mype);
     if (remote_d == NULL) {
@@ -167,7 +173,13 @@ int main(int argc, char *argv[]) {
 
 finalize:
 
-    if (data_d) nvshmem_free(data_d);
+    if (data_d) {
+        if (use_mmap) {
+            free_mmap_buffer(data_d);
+        } else {
+            nvshmem_free(data_d);
+        }
+    }
     free_tables(h_tables, 2);
     finalize_wrapper();
 

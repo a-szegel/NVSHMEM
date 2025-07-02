@@ -137,16 +137,16 @@ void call_bw(int blocks, int threads, void *data_d, unsigned int *counter_d, siz
                                              mype, iter, stride);
             break;
         case NVSHMEM_UINT32:
-            bw<unsigned int32_t><<<blocks, threads>>>((unsigned int32_t *)data_d, counter_d,
-                                                      size / sizeof(double), mype, iter, stride);
+            bw<uint32_t><<<blocks, threads>>>((uint32_t *)data_d, counter_d, size / sizeof(double),
+                                              mype, iter, stride);
             break;
         case NVSHMEM_INT64:
             bw<int64_t><<<blocks, threads>>>((int64_t *)data_d, counter_d, size / sizeof(double),
                                              mype, iter, stride);
             break;
         case NVSHMEM_UINT64:
-            bw<unsigned int64_t><<<blocks, threads>>>((unsigned int64_t *)data_d, counter_d,
-                                                      size / sizeof(double), mype, iter, stride);
+            bw<uint64_t><<<blocks, threads>>>((uint64_t *)data_d, counter_d, size / sizeof(double),
+                                              mype, iter, stride);
             break;
         case NVSHMEM_FP16:
             bw<half><<<blocks, threads>>>((half *)data_d, counter_d, size / sizeof(double), mype,
@@ -204,8 +204,14 @@ int main(int argc, char *argv[]) {
     h_bw = (double *)h_tables[1];
     h_msgrate = (double *)h_tables[2];
 
-    data_d = (void *)nvshmem_malloc(max_size);
-    CUDA_CHECK(cudaMemset(data_d, 0, max_size));
+    if (use_mmap) {
+        data_d = (void *)allocate_mmap_buffer(max_size, mem_handle_type, use_egm, true);
+        DEBUG_PRINT("Allocated mmap buffer\n");
+    } else {
+        data_d = (void *)nvshmem_malloc(max_size);
+        DEBUG_PRINT("Allocated nvshmem malloc buffer\n");
+        CUDA_CHECK(cudaMemset(data_d, 0, max_size));
+    }
 
     CUDA_CHECK(cudaMalloc((void **)&counter_d, sizeof(unsigned int) * 2));
     CUDA_CHECK(cudaMemset(counter_d, 0, sizeof(unsigned int) * 2));
@@ -253,7 +259,13 @@ int main(int argc, char *argv[]) {
 
 finalize:
 
-    if (data_d) nvshmem_free(data_d);
+    if (data_d) {
+        if (use_mmap) {
+            free_mmap_buffer(data_d);
+        } else {
+            nvshmem_free(data_d);
+        }
+    }
     free_tables(h_tables, 3);
     finalize_wrapper();
 

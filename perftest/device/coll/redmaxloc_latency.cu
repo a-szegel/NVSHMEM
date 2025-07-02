@@ -30,17 +30,18 @@
 
 CALL_RDXN_OPS_ALL_TG(double2, double2)
 
-#define SET_SIZE_ARR(TYPE, ELEM_COMP)                                                   \
-    do {                                                                                \
-        j = 0;                                                                          \
-        for (num_elems = min_elems; num_elems <= max_elems; num_elems *= step_factor) { \
-            if (num_elems < ELEM_COMP) {                                                \
-                size_arr[j] = num_elems * sizeof(TYPE);                                 \
-            } else {                                                                    \
-                size_arr[j] = 0;                                                        \
-            }                                                                           \
-            j++;                                                                        \
-        }                                                                               \
+#define SET_SIZE_ARR(TYPE, ELEM_COMP)                                                      \
+    do {                                                                                   \
+        j = 0;                                                                             \
+        for (num_elems = min_elems; num_elems <= max_elems; num_elems *= step_factor) {    \
+            if (num_elems < ELEM_COMP) {                                                   \
+                size_arr[j] =                                                              \
+                    calculate_collective_size("redmaxloc", num_elems, sizeof(TYPE), npes); \
+            } else {                                                                       \
+                size_arr[j] = 0;                                                           \
+            }                                                                              \
+            j++;                                                                           \
+        }                                                                                  \
     } while (0)
 
 #define RUN_ITERS_OP(TYPENAME, TYPE, GROUP, OP, ELEM_COMP)                             \
@@ -98,6 +99,7 @@ int rdxn_calling_kernel(nvshmem_team_t team, void *dest, const void *source, int
     int iter = iters;
     int skip = warmup_iters;
     int j;
+    int npes = nvshmem_n_pes();
     uint64_t *size_arr = (uint64_t *)h_tables[0];
     double *h_maxloc_lat = (double *)h_tables[1];
 

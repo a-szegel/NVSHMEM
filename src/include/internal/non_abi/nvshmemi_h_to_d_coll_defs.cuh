@@ -22,7 +22,7 @@
 #include <cuda_runtime.h>
 
 #include "non_abi/nvshmem_build_options.h"  // IWYU pragma: keep
-#ifdef NVSHMEM_ENABLE_ALL_DEVICE_INLINING
+#if defined(NVSHMEM_ENABLE_ALL_DEVICE_INLINING) || defined(__NVSHMEM_NUMBA_SUPPORT__)
 #include "non_abi/device/pt-to-pt/transfer_device.cuh"
 #else
 #include "non_abi/device/pt-to-pt/nvshmemi_transfer_api.cuh"
@@ -30,29 +30,13 @@
 
 #include "non_abi/device/coll/defines.cuh"
 
-/* Collectives start */
-__global__ void barrier_on_stream_kernel(int start, int stride, int size, long *pSync,
-                                         long *counter);
-__global__ void barrier_on_stream_kernel_warp(int start, int stride, int size, long *pSync,
-                                              long *counter);
-__global__ void barrier_on_stream_kernel_block(int start, int stride, int size, long *pSync,
-                                               long *counter);
-
-__global__ void sync_on_stream_kernel(int start, int stride, int size, long *pSync, long *counter);
-__global__ void sync_on_stream_kernel_warp(int start, int stride, int size, long *pSync,
-                                           long *counter);
-__global__ void sync_on_stream_kernel_block(int start, int stride, int size, long *pSync,
-                                            long *counter);
-__global__ void sync_all_on_stream_kernel();
-__global__ void sync_all_on_stream_kernel_warp();
-__global__ void sync_all_on_stream_kernel_block();
-
 template <typename TYPE>
 __global__ void alltoall_on_stream_kernel(nvshmem_team_t team, TYPE *dest, const TYPE *source,
-                                          size_t nelems) {
+                                          size_t nelems, int in_cuda_graph) {
 #ifdef __CUDA_ARCH__
-    if (!blockIdx.x)
+    if (!blockIdx.x) {
         nvshmemi_alltoall_threadgroup<TYPE, NVSHMEMI_THREADGROUP_BLOCK>(team, dest, source, nelems);
+    }
 #endif
 }
 
@@ -81,7 +65,7 @@ __global__ void barrier_on_stream_kernel_threadgroup(nvshmem_team_t team, int in
 
 template <typename T>
 __global__ void broadcast_on_stream_kernel(nvshmem_team_t team, T *dest, const T *source,
-                                           size_t nelems, int PE_root) {
+                                           size_t nelems, int PE_root, int in_cuda_graph) {
 #ifdef __CUDA_ARCH__
     if (!blockIdx.x)
         nvshmemi_broadcast_threadgroup<T, NVSHMEMI_THREADGROUP_BLOCK>(team, dest, source, nelems,
@@ -91,7 +75,7 @@ __global__ void broadcast_on_stream_kernel(nvshmem_team_t team, T *dest, const T
 
 template <typename TYPE>
 __global__ void fcollect_on_stream_kernel(nvshmem_team_t team, TYPE *dest, const TYPE *source,
-                                          size_t nelems) {
+                                          size_t nelems, int in_cuda_graph) {
 #ifdef __CUDA_ARCH__
     nvshmem_team_t myteam = nvshmemi_device_state_d.team_pool[team]->team_dups[blockIdx.x];
     // Divide nelems by # of blocks per grid for cases: nelems_per_block == 0 and nelems_remain !=
@@ -112,7 +96,7 @@ __global__ void fcollect_on_stream_kernel(nvshmem_team_t team, TYPE *dest, const
 
 template <typename TYPE, rdxn_ops_t OP>
 __global__ void rdxn_on_stream_kernel(nvshmem_team_t team, TYPE *dest, const TYPE *source,
-                                      size_t nreduce) {
+                                      size_t nreduce, int in_cuda_graph) {
 #ifdef __CUDA_ARCH__
     nvshmem_team_t myteam = nvshmemi_device_state_d.team_pool[team]->team_dups[blockIdx.x];
     // Divide nreduce by # of blocks per grid for cases: nreduce_per_block == 0 and nreduce_remain
@@ -125,7 +109,7 @@ __global__ void rdxn_on_stream_kernel(nvshmem_team_t team, TYPE *dest, const TYP
     }
 
     if (my_nreduce > 0) {
-        nvshmemi_reduce_threadgroup<TYPE, OP, NVSHMEMI_THREADGROUP_BLOCK, 1>(
+        nvshmemi_reduce_threadgroup<TYPE, OP, NVSHMEMI_THREADGROUP_BLOCK>(
             myteam, dest + nreduce_per_block * blockIdx.x, source + nreduce_per_block * blockIdx.x,
             my_nreduce);
     }
@@ -134,7 +118,7 @@ __global__ void rdxn_on_stream_kernel(nvshmem_team_t team, TYPE *dest, const TYP
 
 template <typename TYPE, rdxn_ops_t OP>
 __global__ void reducescatter_on_stream_kernel(nvshmem_team_t team, TYPE *dest, const TYPE *source,
-                                               size_t nreduce) {
+                                               size_t nreduce, int in_cuda_graph) {
 #ifdef __CUDA_ARCH__
     nvshmem_team_t myteam = nvshmemi_device_state_d.team_pool[team]->team_dups[blockIdx.x];
     // Divide nreduce by # of blocks per grid for cases: nreduce_per_block == 0 and nreduce_remain
@@ -151,14 +135,16 @@ __global__ void reducescatter_on_stream_kernel(nvshmem_team_t team, TYPE *dest, 
             myteam, dest + nreduce_per_block * blockIdx.x, source,
             nreduce_per_block * blockIdx.x + nvshmemi_team_my_pe(myteam) * nreduce, my_nreduce);
     }
-
 #endif
 }
 
 template <threadgroup_t SCOPE>
-__global__ void sync_on_stream_kernel_threadgroup(nvshmem_team_t team) {
+__global__ void sync_on_stream_kernel_threadgroup(nvshmem_team_t team, int in_cuda_graph) {
 #ifdef __CUDA_ARCH__
     nvshmemi_sync_algo_threadgroup<SCOPE>(team);
+    /* Since the semantic of sync isn't required to guarante ordering of the data,
+       we can opportunisitically skip threadfence_system, when using in_cuda_graph
+     */
 #endif
 }
 /* collectives end */

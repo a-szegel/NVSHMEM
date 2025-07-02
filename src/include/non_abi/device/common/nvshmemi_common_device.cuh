@@ -20,7 +20,7 @@
 #include "device_host/nvshmem_common.cuh"
 #include "device_host_transport/nvshmem_common_transport.h"
 #include "non_abi/device/threadgroup/nvshmemi_common_device_defines.cuh"
-#ifdef NVSHMEM_ENABLE_ALL_DEVICE_INLINING
+#if defined(NVSHMEM_ENABLE_ALL_DEVICE_INLINING) || defined(__NVSHMEM_NUMBA_SUPPORT__)
 #include "non_abi/device/pt-to-pt/transfer_device.cuh"
 #else
 #include "non_abi/device/pt-to-pt/nvshmemi_transfer_api.cuh"
@@ -77,6 +77,16 @@ struct is_double : std::false_type {};
 template <>
 struct is_double<double> : std::true_type {};
 
+template <typename T>
+struct is_uint16 : std::false_type {};
+template <>
+struct is_uint16<uint16_t> : std::true_type {};
+
+template <typename T>
+struct is_int16 : std::false_type {};
+template <>
+struct is_int16<int16_t> : std::true_type {};
+
 #else
 
 template <typename T>
@@ -98,6 +108,16 @@ template <typename T>
 struct is_bfloat : cuda::std::false_type {};
 template <>
 struct is_bfloat<__nv_bfloat16> : cuda::std::true_type {};
+
+template <typename T>
+struct is_uint16 : cuda::std::false_type {};
+template <>
+struct is_uint16<uint16_t> : cuda::std::true_type {};
+
+template <typename T>
+struct is_int16 : cuda::std::false_type {};
+template <>
+struct is_int16<int16_t> : cuda::std::true_type {};
 
 #endif
 
@@ -266,7 +286,6 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_memcpy_threadgroup(
     if ((uintptr_t)dst % 16 == 0 && (uintptr_t)src % 16 == 0) {
         const size_t nelems = len / 16;
 
-        /* TODO: Remove guards for LLVM Bitcode Library in 3.3 */
 #ifdef __clang_llvm_bitcode_lib__
         uint32_t *__restrict__ dst_p = (uint32_t *)dst;
         const uint32_t *__restrict__ src_p = (const uint32_t *)src;
@@ -284,8 +303,13 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_memcpy_threadgroup(
 
         if (0 == len) return;
 
+#ifdef __clang_llvm_bitcode_lib__
+        dst = (void *)(dst_p + nelems * 4);
+        src = (void *)(src_p + nelems * 4);
+#else
         dst = (void *)(dst_p + nelems);
         src = (void *)(src_p + nelems);
+#endif
     }
 
     /*
@@ -702,8 +726,8 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_packLL128(T *psync, const
         /* definitely possible we are not synchronized before loads to psync. Significant perf
          * overhead? */
         for (int pe = 0; pe < pe_count; pe++) {
-            current_global_pe_index =
-                teami->start + (team_offset + (pe_group_offset + pe) % pe_count) * teami->stride;
+            current_global_pe_index = nvshmemi_team_translate_pe_to_team_world_wrap(
+                teami, team_offset + (pe_group_offset + pe) % pe_count);
             /*             if (VOLATILE && current_global_pe_index == my_pe_idx) {
                             continue;
                         } */
@@ -738,9 +762,8 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_packLL128(T *psync, const
             }
             __syncwarp(warp_mask);
             for (int pe = 0; pe < pe_count; pe++) {
-                current_global_pe_index =
-                    teami->start +
-                    (team_offset + (pe_group_offset + pe) % pe_count) * teami->stride;
+                current_global_pe_index = nvshmemi_team_translate_pe_to_team_world_wrap(
+                    teami, team_offset + (pe_group_offset + pe) % pe_count);
                 /*                 if (VOLATILE && current_global_pe_index == my_pe_idx) {
                                     continue;
                                 } */
@@ -867,10 +890,9 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_recvLL128(T *dest, const 
 template <typename T, threadgroup_t SCOPE>
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_mcast_recvLL(T *dest, const uint64_t *src,
                                                                     size_t nelems, uint32_t flag) {
-    // Assumptions: sizeof(T) >= 4 bytes, num_subelems is a multiple of 2
     int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
     int groupSize = nvshmemi_threadgroup_size<SCOPE>();
-    size_t num_subelems = nelems * (sizeof(T) / sizeof(uint32_t));
+    size_t num_subelems = (nelems * sizeof(T)) / sizeof(uint32_t);
     if (TYPE_IS_FLOAT(T)) {
         for (int i = myIdx; i < num_subelems; i += groupSize) {
             float data1, flag1;
@@ -903,7 +925,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_mcast_packLL(uint64_t *de
                                                                     uint32_t ll_flag) {
     int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
     int groupSize = nvshmemi_threadgroup_size<SCOPE>();
-    const size_t num_subelems = nelems * (sizeof(T) / sizeof(float));
+    const size_t num_subelems = (nelems * sizeof(T)) / sizeof(float);
     float flagf32;
     if (TYPE_IS_FLOAT(T)) asm("cvt.rn.f32.u32 %0, %1;" : "=f"(flagf32) : "r"(ll_flag));
     for (int i = 2 * myIdx; i < num_subelems; i += 2 * groupSize) {
@@ -926,10 +948,9 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_mcast_packLL(uint64_t *de
 template <typename T, threadgroup_t SCOPE>
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_recvLL(T *dest, const uint64_t *src,
                                                               size_t nelems, uint32_t flag) {
-    // Assumptions: sizeof(T) >= 4 bytes, num_subelems is a multiple of 2
     int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
     int groupSize = nvshmemi_threadgroup_size<SCOPE>();
-    size_t num_subelems = nelems * (sizeof(T) / sizeof(uint32_t));
+    size_t num_subelems = (nelems * sizeof(T)) / sizeof(uint32_t);
     for (int i = 2 * myIdx; i < num_subelems; i += 2 * groupSize) {
         uint32_t flag1, flag2, data1, data2;
         do {
@@ -949,7 +970,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_packLL_naive(uint64_t *de
                                                                     uint32_t ll_flag) {
     int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
     int groupSize = nvshmemi_threadgroup_size<SCOPE>();
-    size_t num_subelems = nelems * (sizeof(T) / sizeof(uint32_t));
+    size_t num_subelems = (nelems * sizeof(T)) / sizeof(uint32_t);
     for (int i = myIdx * 2; i < num_subelems; i += groupSize * 2) {
         size_t dst_offset = 2 * i * sizeof(uint32_t);
         size_t src_offset = i * sizeof(uint32_t);
@@ -966,7 +987,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_packLL(T *psync, const T 
                                                               size_t nelems, uint32_t ll_flag,
                                                               nvshmemi_team_t *teami, int pe_count,
                                                               int team_offset) {
-    const size_t num_subelems = nelems * (sizeof(T) / sizeof(uint32_t));
+    const size_t num_subelems = (nelems * sizeof(T)) / sizeof(uint32_t);
     const int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
     const int groupSize = nvshmemi_threadgroup_size<SCOPE>();
     /* each thread will write 2 subelements (8 bytes) */
@@ -981,7 +1002,6 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_packLL(T *psync, const T 
     /* We need to be sure to fill each unrolled loop */
     assert(num_subelems % UNROLL * 2 == 0);
     assert((uintptr_t)psync % 16 == 0);
-    assert(sizeof(T) >= sizeof(uint32_t));
 
     for (element_offset = element_start; element_offset < num_subelems;
          element_offset += element_stride) {
@@ -997,7 +1017,8 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_packLL(T *psync, const T 
             }
         }
         for (int pe = 0; pe < pe_count; pe++) {
-            current_global_pe_index = teami->start + (team_offset + pe) * teami->stride;
+            current_global_pe_index =
+                nvshmemi_team_translate_pe_to_team_world_wrap(teami, team_offset + pe);
             current_dest_address =
                 (uint32_t *)nvshmemi_ptr(psync, current_global_pe_index) + element_offset * 2;
 

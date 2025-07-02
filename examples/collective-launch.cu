@@ -47,6 +47,8 @@ __global__ void reduce_ring(int *target, int mype, int npes) {
         lvalue = *target + mype;
         nvshmem_barrier_all();
     }
+
+    *target = lvalue;
 }
 
 int main(int c, char *v[]) {

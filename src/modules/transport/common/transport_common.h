@@ -9,8 +9,9 @@
 
 #define __STDC_FORMAT_MACROS 1
 
-#include <stdio.h>                                       // for fprintf, stderr
-#include <strings.h>                                     // for strncasecmp
+#include <stdio.h>    // for fprintf, stderr
+#include <strings.h>  // for strncasecmp
+#include <unordered_map>
 #include "bootstrap_host_transport/env_defs_internal.h"  // for nvshmemi_opt...
 #include "internal/host_transport/transport.h"           // for nvshmem_tran...
 
@@ -112,11 +113,7 @@ int nvshmemt_mem_handle_cache_remove(nvshmem_transport_t t,
                                      struct transport_mem_handle_info_cache *cache, void *addr);
 int nvshmemt_mem_handle_cache_fini(struct transport_mem_handle_info_cache *cache);
 
-int nvshmemt_put_signal(struct nvshmem_transport *tcurr, int pe, rma_verb_t write_verb,
-                                  std::vector<rma_memdesc_t> &write_remote, std::vector<rma_memdesc_t> &write_local,
-                                  std::vector<rma_bytesdesc_t> &write_bytes_desc, amo_verb_t sig_verb, amo_memdesc_t *sig_target,
-                                  amo_bytesdesc_t sig_bytes_desc, int is_proxy);
-
+bool check_egm(void *addr, std::unordered_map<void *, size_t> *egm_map);
 extern "C" {
 int nvshmemt_init(nvshmem_transport_t *transport, struct nvshmemi_cuda_fn_table *table,
                   int api_version);

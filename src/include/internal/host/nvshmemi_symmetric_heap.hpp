@@ -13,6 +13,7 @@
 #include <cuda.h>
 #include <memory>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 #include "internal/host/nvshmem_internal.h"
 #include "internal/host/nvshmemi_types.h"
@@ -55,7 +56,8 @@ class nvshmemi_symmetric_heap {
     size_t get_mem_granularity() const { return mem_granularity_; }
     size_t get_log2_cumem_granularity() const { return log2_mem_granularity_; }
     uint64_t get_reserve_size(void) const { return reserved_heap_size_; }
-    size_t get_physical_heap_size(void) const { return physical_heap_size_; }
+    size_t get_physical_heap_size(void) const { return physical_internal_heap_size_; }
+    uint64_t get_logical_heap_size(void) const { return heap_size_; }
     CUmemAllocationHandleType get_mem_handle_type(void) { return mem_handle_type_; }
     bool is_cuda_mem_handle_type_ipc(void) const {
         return (mem_handle_type_ == CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR);
@@ -101,14 +103,33 @@ class nvshmemi_symmetric_heap {
     virtual void *heap_align(size_t size, size_t alignment);
     virtual void heap_deallocate(void *ptr);
 
+    /* Functions to map and unmap user buffers
+     * memory registered using nvshmemx_buffer_register_symmetric call
+     * is refered to as external allocation
+     * while memory allocated using nvshmem_malloc is referred to as internal
+     * allocation in the code
+     */
+    virtual void *mmap_mem(void *ptr, size_t size, int flags) = 0;
+    virtual int unmap_mem(void *ptr, size_t size) = 0;
+    virtual size_t get_mmap_allocated_range() { return 0; }
+    std::unordered_map<void *, void *> *get_alias_va_map() { return &alias_va_map_; }
+    std::unordered_map<void *, size_t> *get_egm_map() { return &egm_map_; }
+
+    /* check if passed address in within heap range*/
+    virtual bool is_egm(void *addr) { return false; }
+
     /**
      * NVLS specific member functions - only concretized in dynamic heaps
      */
     virtual int nvls_create_heap_memory_by_team(nvshmemi_team_t *team) = 0;
     virtual int nvls_bind_heap_memory_by_team(nvshmemi_team_t *team) = 0;
     virtual int nvls_map_heap_memory_by_team(nvshmemi_team_t *team) = 0;
+    virtual int nvls_unmap_heap_memory_by_size(nvshmemi_team_t *team, off_t mc_offset,
+                                               uint64_t size) = 0;
     virtual void nvls_unmap_heap_memory_by_team(nvshmemi_team_t *team) = 0;
+    virtual int nvls_unmap_heap_memory(off_t mc_offset, uint64_t size) = 0;
     virtual void nvls_unbind_heap_memory_by_team(nvshmemi_team_t *team) = 0;
+    virtual int nvls_unbind_heap_memory_by_size(off_t mc_offset, size_t size) = 0;
 
    private:
     /**
@@ -129,7 +150,7 @@ class nvshmemi_symmetric_heap {
     void set_p2p_transport(nvshmemi_mem_p2p_transport *obj) { p2p_ref_ = obj; }
     void set_remote_transport(nvshmemi_mem_remote_transport *obj) { remote_ref_ = obj; }
     void set_mem_handle_type(CUmemAllocationHandleType type) { mem_handle_type_ = type; }
-
+    void update_idx_in_mmap_mc_handle(void *ptr, off_t off) { idx_in_mmap_mc_handles_[ptr] = off; }
     virtual void *allocate_symmetric_memory(size_t size, size_t count, size_t alignment,
                                             int type) = 0;
 
@@ -139,22 +160,15 @@ class nvshmemi_symmetric_heap {
     /**
      * Given a buf, size address range, map the heap into PE address space
      */
-    virtual int map_heap_memory(void *buf, size_t size);
-    /**
-     * Given a buffer, size and input memory handle, register the heap into PE address space
-     */
-    virtual int register_heap_memory(nvshmem_mem_handle_t *input, void *buffer, size_t size);
+    virtual int map_heap_range_by_size(void *buf, size_t size);
+    virtual int update_heap_handle_cache(void *buf, size_t size, bool ext_allocation = false);
+
     /**
      * Given a buffer, size, index to valid transport and PE#, map the buffer range into target PE
      * address space
      */
-    virtual int map_heap_chunk(int pe_id, int transport_idx, char *buf = nullptr,
-                               size_t size = 0) = 0;
-    /**
-     * Given a buffer, size and input memory handle, register the chunk into PE address space
-     * across initialized mem transports
-     */
-    virtual int register_heap_chunk(nvshmem_mem_handle_t *mem_handle, void *buf, size_t size) = 0;
+    virtual int map_heap_range_by_pe(int pe_id, int transport_idx, char *buf = nullptr,
+                                     size_t size = 0) = 0;
     /**
      * Given an collection of local memory handles across all PEs, establish pairwise memory handles
      * for processes connected over p2p transport
@@ -183,6 +197,13 @@ class nvshmemi_symmetric_heap {
     template <typename T>
     int is_symmetric(T value);
 
+    /*
+     * Multicast expects memory buffers to be on different devices (GPU or CPU), which may
+     * not be true in case of MPG and EGM buffers on same CPU socket. This function detects
+     * the condition
+     */
+    int check_buffers_on_same_device(bool onGPU, void *ptr);
+
     /**
      * This function will initialize mspace container for managing virtual address range
      */
@@ -196,7 +217,8 @@ class nvshmemi_symmetric_heap {
     /**
      * Given an address and size,
      */
-    virtual void update_idx_in_handle(void *addr, size_t size);
+    virtual void update_idx_in_handle(void *addr, size_t size, size_t idx,
+                                      bool ext_allocation = false);
 
     /**
      * Given a mem_granualarity, this API will compute heap size attributes such as heapextra
@@ -216,11 +238,12 @@ class nvshmemi_symmetric_heap {
     CUmemAllocationHandleType mem_handle_type_ = CU_MEM_HANDLE_TYPE_NONE;
     size_t mem_granularity_ = 0;
     size_t log2_mem_granularity_ = 0;
-    size_t physical_heap_size_ = 0;
+    size_t physical_internal_heap_size_ = 0;
     size_t heap_size_ = 0;
     uint64_t reserved_heap_size_ = 0;
     void *global_heap_base_ = nullptr;
     void *heap_base_ = nullptr;
+    void *mmap_base_ = nullptr;
     void **peer_heap_base_remote_ = nullptr;
     void **peer_heap_base_p2p_ = nullptr;
     int heap_handle_cache_ = 0;
@@ -228,8 +251,20 @@ class nvshmemi_symmetric_heap {
         nullptr;                                     // holds an instance of remote abstraction
     nvshmemi_mem_p2p_transport *p2p_ref_ = nullptr;  // holds an instance of memp2p abstraction
     mspace *heap_mspace_ = nullptr;
-    std::vector<std::vector<nvshmem_mem_handle>> handles_;
+    std::vector<std::vector<nvshmem_mem_handle>> remote_handles_;
+    std::vector<std::vector<nvshmem_mem_handle>> p2p_handles_;
+    std::vector<std::vector<nvshmem_mem_handle>> remote_mmap_handles_;
+    mspace *mmap_mspace_ = nullptr;  // mspace for mmaped region
     std::vector<std::tuple<size_t, void *, size_t>> idx_in_handles_;
+    std::map<size_t, std::tuple<size_t, void *, size_t>> idx_in_mmap_handles_;
+    // track indices of mc_handles created for mmaped user buffers
+    // needed for selectively unbinding them on unmap
+    std::unordered_map<void *, size_t> idx_in_mmap_mc_handles_;
+    std::unordered_map<void *, size_t> mmap_handle_idx_in_cumem_handles_;
+    // track alias virtual addresses for mmaped user buffers
+    // map heap addr -> user buffer addr
+    std::unordered_map<void *, void *> alias_va_map_;
+    std::unordered_map<void *, size_t> egm_map_;
 };
 
 inline nvshmem_mem_handle *nvshmemi_symmetric_heap::get_transport_mem_handle(void *addr,
@@ -240,6 +275,7 @@ inline nvshmem_mem_handle *nvshmemi_symmetric_heap::get_transport_mem_handle(voi
     size_t handle_size;
     size_t handle_sub_index;
     size_t offset;
+    nvshmem_mem_handle *return_handle;
 
     void *handle_start_addr;
 
@@ -249,16 +285,26 @@ inline nvshmem_mem_handle *nvshmemi_symmetric_heap::get_transport_mem_handle(voi
 
     offset = (char *)addr - (char *)heap_base_;
     addr_idx = offset >> log2_mem_granularity_;
-
-    handle_idx = std::get<0>(idx_in_handles_[addr_idx]);
     handle_sub_index = pe * get_state()->num_initialized_transports + transport_idx;
-    handle_start_addr = std::get<1>(idx_in_handles_[addr_idx]);
-    handle_size = std::get<2>(idx_in_handles_[addr_idx]);
 
+    // if address in within mmap range, use mmap_handles
+    if (addr >= ((char *)heap_base_ + (heap_size_ - get_mmap_allocated_range()))) {
+        handle_idx = std::get<0>(idx_in_mmap_handles_[addr_idx]);
+        handle_start_addr = std::get<1>(idx_in_mmap_handles_[addr_idx]);
+        handle_size = std::get<2>(idx_in_mmap_handles_[addr_idx]);
+        return_handle = &((remote_mmap_handles_.at(handle_idx)).at(handle_sub_index));
+    } else {
+        handle_idx = std::get<0>(idx_in_handles_[addr_idx]);
+        handle_start_addr = std::get<1>(idx_in_handles_[addr_idx]);
+        handle_size = std::get<2>(idx_in_handles_[addr_idx]);
+        return_handle = &remote_handles_[handle_idx][handle_sub_index];
+    }
+
+    // getting the remainder space within chunk - why?
     if (len) {
         *len = handle_size - ((char *)addr - (char *)handle_start_addr);
     }
-    return &handles_[handle_idx][handle_sub_index];
+    return return_handle;
 }
 
 inline size_t nvshmemi_symmetric_heap::get_mem_handle_addr_offset(void *addr) {
@@ -292,9 +338,14 @@ class nvshmemi_symmetric_heap_static : public nvshmemi_symmetric_heap {
     virtual void *allocate_symmetric_memory(size_t size, size_t count, size_t alignment, int type);
 
     virtual int register_heap_memory_handle(nvshmem_mem_handle_t *local, int transport_idx,
-                                            nvshmem_mem_handle_t *in, void *buf, size_t size,
+                                            void *buf, size_t size,
                                             nvshmem_transport_t current) = 0;
-    virtual int register_heap_chunk(nvshmem_mem_handle_t *mem_handle, void *buf, size_t size);
+    /**
+     * Given a buffer, size and input memory handle, register the heap into PE address space
+     */
+    virtual int register_heap_memory(nvshmem_mem_handle_t *mem_handle, void *buf, size_t size);
+    virtual int map_heap_memory(nvshmem_mem_handle_t *mem_handle, void *buf, size_t size);
+    virtual int register_heap_chunk_by_size(void *buf, size_t size);
     virtual int setup_mspace();
 
     /**
@@ -314,6 +365,16 @@ class nvshmemi_symmetric_heap_static : public nvshmemi_symmetric_heap {
         return (NVSHMEMX_ERROR_NOT_SUPPORTED);
     }
 
+    int nvls_unmap_heap_memory(off_t mc_offset, uint64_t size) {
+        assert(0);
+        return (NVSHMEMX_ERROR_NOT_SUPPORTED);
+    }
+
+    int nvls_unmap_heap_memory_by_size(nvshmemi_team_t *team, off_t mc_offset, uint64_t size) {
+        assert(0);
+        return (NVSHMEMX_ERROR_NOT_SUPPORTED);
+    }
+
     void nvls_unmap_heap_memory_by_team(nvshmemi_team_t *team) {
         assert(0);
         return;
@@ -324,12 +385,30 @@ class nvshmemi_symmetric_heap_static : public nvshmemi_symmetric_heap {
         return;
     }
 
+    int nvls_unbind_heap_memory_by_size(off_t mc_offset, size_t size) {
+        assert(0);
+        return (NVSHMEMX_ERROR_NOT_SUPPORTED);
+    }
+
+    void *mmap_mem(void *ptr, size_t size, int flags) {
+        // Feature not yet supported
+        assert(0);
+        return NULL;
+    }
+
+    int unmap_mem(void *ptr, size_t size) {
+        // Feature not yet supported
+        assert(0);
+        return (NVSHMEMX_ERROR_NOT_SUPPORTED);
+    }
+
     /**
      * Given a buf, length, export the buffer range to target mem handle
      */
     virtual int export_memory(nvshmem_mem_handle_t *mem_handle, void *buf, size_t length) = 0;
 
    private:
+    bool gather_mem_handles_done_ = false;
 };
 
 class nvshmemi_symmetric_heap_dynamic : public nvshmemi_symmetric_heap {
@@ -344,8 +423,35 @@ class nvshmemi_symmetric_heap_dynamic : public nvshmemi_symmetric_heap {
     }
     virtual int export_memory(nvshmem_mem_handle_t *mem_handle,
                               nvshmem_mem_handle_t *mem_handle_in) = 0;
-    virtual int register_heap_chunk(nvshmem_mem_handle_t *mem_handle, void *buf, size_t size);
+    /**
+     * Given a buffer, size and input memory handle, register the heap into PE address space
+     * ext_allocation indicates the input memory handle is a user buffer (resulting from mmap call)
+     * ext_allocation = false, indicates memory registered through nvshmem_malloc call
+     */
+    virtual int register_heap_memory(nvshmem_mem_handle_t *mem_handle, void *buf, size_t size,
+                                     bool ext_allocation = false);
+    virtual int map_heap_memory(nvshmem_mem_handle_t *mem_handle, void *buf, size_t size);
+    virtual int register_heap_chunk_by_size(void *buf, size_t size, bool ext_allocation = false);
     virtual int setup_mspace();
+
+    virtual void *mmap_mem(void *ptr, size_t size, int flags) {
+        // Feature not yet supported
+        assert(0);
+        return NULL;
+    }
+
+    virtual int unmap_mem(void *ptr, size_t size) {
+        // Feature not yet supported
+        assert(0);
+        return (NVSHMEMX_ERROR_NOT_SUPPORTED);
+    }
+    virtual size_t get_mmap_allocated_range() { return 0; }
+
+    virtual std::map<void *, size_t> *get_mmapped_buf() {
+        // Feature not yet supported
+        assert(0);
+        return NULL;
+    }
 
    private:
 };
@@ -368,10 +474,9 @@ class nvshmemi_symmetric_heap_vidmem_static_pinned final
     int allocate_heap_memory();
     int free_heap_memory(void *addr);
     int exchange_heap_memory_handle(nvshmem_mem_handle_t *local_handles);
-    int register_heap_memory_handle(nvshmem_mem_handle_t *local, int transport_idx,
-                                    nvshmem_mem_handle_t *in, void *buf, size_t size,
-                                    nvshmem_transport_t current);
-    int map_heap_chunk(int pe_id, int transport_idx, char *buf = nullptr, size_t size = 0);
+    int register_heap_memory_handle(nvshmem_mem_handle_t *local, int transport_idx, void *buf,
+                                    size_t size, nvshmem_transport_t current);
+    int map_heap_range_by_pe(int pe_id, int transport_idx, char *buf = nullptr, size_t size = 0);
 
     int export_memory(nvshmem_mem_handle_t *mem_handle, void *buf, size_t length);
     int import_memory(nvshmem_mem_handle_t *mem_handle, void **buf, size_t length = 0);
@@ -398,8 +503,17 @@ class nvshmemi_symmetric_heap_vidmem_dynamic_vmm final
     int nvls_create_heap_memory_by_team(nvshmemi_team_t *team);
     int nvls_bind_heap_memory_by_team(nvshmemi_team_t *team);
     int nvls_map_heap_memory_by_team(nvshmemi_team_t *team);
+    int nvls_unmap_heap_memory_by_size(nvshmemi_team_t *team, off_t mc_offset, uint64_t size);
     void nvls_unmap_heap_memory_by_team(nvshmemi_team_t *team);
+    int nvls_unmap_heap_memory(off_t mc_offset, uint64_t size);
     void nvls_unbind_heap_memory_by_team(nvshmemi_team_t *team);
+    int nvls_unbind_heap_memory_by_size(off_t mc_offset, size_t size);
+
+    size_t get_mmap_allocated_range();
+    bool is_egm(void *addr);
+    std::map<void *, size_t> *get_mmapped_buf();
+    void *mmap_mem(void *ptr, size_t size, int flags);
+    int unmap_mem(void *ptr, size_t size);
 
    protected:
     CUmemGenericAllocationHandle get_cumem_handle_ptr(int i) {
@@ -408,10 +522,11 @@ class nvshmemi_symmetric_heap_vidmem_dynamic_vmm final
     off_t get_cumem_handle_alloc_offset(int i) { return std::get<1>(cumem_handles_[i]); }
     off_t get_cumem_handle_mmap_offset(int i) { return std::get<2>(cumem_handles_[i]); }
     size_t get_cumem_handle_mmap_size(int i) { return std::get<3>(cumem_handles_[i]); }
+    bool is_cumem_handle_released(int i) { return std::get<4>(cumem_handles_[i]); }
     size_t get_cumem_handle_size(void) { return cumem_handles_.size(); }
     void print_cumem_handles(void);
     int exchange_heap_memory_handle(nvshmem_mem_handle_t *local_handles);
-    int map_heap_chunk(int pe_id, int transport_idx, char *buf, size_t size);
+    int map_heap_range_by_pe(int pe_id, int transport_idx, char *buf, size_t size);
     int import_memory(nvshmem_mem_handle_t *mem_handle, void **buf, size_t length);
     int export_memory(nvshmem_mem_handle_t *mem_handle, nvshmem_mem_handle_t *mem_handle_in);
     int release_memory(void *buf, size_t size);
@@ -444,7 +559,9 @@ class nvshmemi_symmetric_heap_vidmem_dynamic_vmm final
         return;
     }
 
-    std::vector<std::tuple<CUmemGenericAllocationHandle, off_t, off_t, size_t>> cumem_handles_;
+    int check_user_buffer_for_mmap(void *ptr, size_t &size, unsigned int *ptr_mem_type);
+    std::vector<std::tuple<CUmemGenericAllocationHandle, off_t, off_t, size_t, bool>>
+        cumem_handles_;
 };
 
 class nvshmemi_symmetric_heap_sysmem_static : public nvshmemi_symmetric_heap_static {
@@ -468,16 +585,15 @@ class nvshmemi_symmetric_heap_sysmem_static_shm final
             close(nvshmemi_symmetric_heap_sysmem_static_shm::infos_[i].shm_fd);
         }
     }
-    int register_heap_memory_handle(nvshmem_mem_handle_t *local, int transport_idx,
-                                    nvshmem_mem_handle_t *in, void *buf, size_t size,
-                                    nvshmem_transport_t current);
+    int register_heap_memory_handle(nvshmem_mem_handle_t *local, int transport_idx, void *buf,
+                                    size_t size, nvshmem_transport_t current);
 
    protected:
     int allocate_heap_memory();
     int free_heap_memory(void *addr);
 
     int exchange_heap_memory_handle(nvshmem_mem_handle_t *local_handles);
-    int map_heap_chunk(int pe_id, int transport_idx, char *buf = nullptr, size_t size = 0);
+    int map_heap_range_by_pe(int pe_id, int transport_idx, char *buf = nullptr, size_t size = 0);
 
     /** Stubbed out for P2P transport as export is non-action, import is done at allocation time,
      * release is done at cleanup time **/
