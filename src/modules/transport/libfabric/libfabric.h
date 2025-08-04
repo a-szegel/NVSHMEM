@@ -169,6 +169,7 @@ typedef struct {
     uint64_t *proxy_put_signal_per_peer_seq_counter;
     std::unordered_map<uint64_t, std::pair<nvshmemt_libfabric_gdr_op_ctx_t *, int>>
         *proxy_put_signal_comp_map;
+    std::mutex put_signal_mutex;
 } nvshmemt_libfabric_state_t;
 
 typedef enum {
