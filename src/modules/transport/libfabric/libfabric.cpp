@@ -413,8 +413,6 @@ int nvshmemt_libfabric_put_signal_completion(nvshmem_transport_t transport,
     const uint64_t mask_upper_2_bytes = 0x0000FFFFFFFFFFFFu;
     std::unordered_map<uint64_t, std::pair<nvshmemt_libfabric_gdr_op_ctx_t *, int>>::iterator iter;
 
-    state->put_signal_mutex.lock();
-
     if (unlikely(*addr == FI_ADDR_NOTAVAIL)) {
         status = -1;
         NVSHMEMI_ERROR_JMP(status, NVSHMEMX_ERROR_INVALID_VALUE, out,
@@ -458,7 +456,6 @@ int nvshmemt_libfabric_put_signal_completion(nvshmem_transport_t transport,
     }
 
 out:
-    state->put_signal_mutex.unlock();
     return status;
 }
 
