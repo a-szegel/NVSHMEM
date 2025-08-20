@@ -429,7 +429,7 @@ int nvshmemt_libfabric_put_signal_completion(nvshmem_transport_t transport,
         /* The EFA provider has an inline send size of 32 bytes.
          * The gdr atomic fi_send message is 72 bytes and does not
          * fit inside the efa_provider's 32 byte inline send window.
-         * Hence, we send a 28 byte nvshmemt_libfabric_gdr_signal_op over the wire,
+         * Hence, we send a 32 byte nvshmemt_libfabric_gdr_signal_op over the wire,
          * and re-arrange the memory in-place to allow for re-use of the gdr atomic
          * code.
          */
