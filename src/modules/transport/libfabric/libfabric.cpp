@@ -302,7 +302,7 @@ int perform_gdrcopy_amo(nvshmem_transport_t transport, nvshmemt_libfabric_gdr_op
         do {
             status =
                 fi_send(op->ep->endpoint, (void *)resp_op, sizeof(nvshmemt_libfabric_gdr_op_ctx_t) - sizeof(struct fi_context2),
-                        libfabric_state->mr, received_op->ret_ep, &resp_op->ofi_context);
+                        fi_mr_desc(libfabric_state->mr), received_op->ret_ep, &resp_op->ofi_context);
         } while (try_again(transport, &status, &num_retries));
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
                               "Unable to respond to atomic request.\n");
@@ -375,7 +375,7 @@ int nvshmemt_libfabric_gdr_process_amos(nvshmem_transport_t transport) {
 
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "Unable to process atomic.\n");
         status = fi_recv(op->ep->endpoint, (void *)op, sizeof(nvshmemt_libfabric_gdr_op_ctx_t) - sizeof(struct fi_context2),
-                         libfabric_state->mr, FI_ADDR_UNSPEC, &op->ofi_context);
+                         fi_mr_desc(libfabric_state->mr), FI_ADDR_UNSPEC, &op->ofi_context);
         if (status) {
             NVSHMEMI_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "Unable to re-post recv.\n");
         }
@@ -455,8 +455,8 @@ int nvshmemt_libfabric_put_signal_completion(nvshmem_transport_t transport,
         }
         perform_gdrcopy_amo<uint64_t>(transport, op);
         ep->proxy_put_signal_comp_map->erase(iter);
-        status = fi_recv(ep->endpoint, op, sizeof(nvshmemt_libfabric_gdr_op_ctx_t) - sizeof(struct fi_context2), libfabric_state->mr,
-                         FI_ADDR_UNSPEC, &op->ofi_context);
+        status = fi_recv(ep->endpoint, op, sizeof(nvshmemt_libfabric_gdr_op_ctx_t) - sizeof(struct fi_context2),
+                         fi_mr_desc(libfabric_state->mr), FI_ADDR_UNSPEC, &op->ofi_context);
     }
 
 out:
@@ -566,7 +566,7 @@ static int nvshmemt_libfabric_rma_impl(struct nvshmem_transport *tcurr, int pe, 
             num_retries = 0;
             do {
                 p_buf->p_op.value = *(uint64_t *)local->ptr;
-                status = fi_write(ep->endpoint, &p_buf->p_op.value, op_size, libfabric_state->mr, target_ep,
+                status = fi_write(ep->endpoint, &p_buf->p_op.value, op_size, fi_mr_desc(libfabric_state->mr), target_ep,
                                   (uintptr_t)remote->ptr, remote_handle->key, context);
             } while (try_again(tcurr, &status, &num_retries));
         } else {
@@ -685,7 +685,7 @@ static int nvshmemt_libfabric_gdr_amo(struct nvshmem_transport *transport, int p
 
     num_retries = 0;
     do {
-        status = fi_send(ep->endpoint, (void *)amo, sizeof(nvshmemt_libfabric_gdr_op_ctx_t) - sizeof(struct fi_context2), libfabric_state->mr,
+        status = fi_send(ep->endpoint, (void *)amo, sizeof(nvshmemt_libfabric_gdr_op_ctx_t) - sizeof(struct fi_context2), fi_mr_desc(libfabric_state->mr),
                          target_ep, &amo->ofi_context);
     } while (try_again(transport, &status, &num_retries));
 
@@ -893,7 +893,7 @@ static int nvshmemt_libfabric_gdr_signal(struct nvshmem_transport *transport, in
 
     num_retries = 0;
     do {
-        status = fi_send(ep->endpoint, (void *)signal, sizeof(nvshmemt_libfabric_gdr_signal_op_t), libfabric_state->mr,
+        status = fi_send(ep->endpoint, (void *)signal, sizeof(nvshmemt_libfabric_gdr_signal_op_t), fi_mr_desc(libfabric_state->mr),
                          target_ep, &context->ofi_context);
     } while (try_again(transport, &status, &num_retries));
 
@@ -1569,7 +1569,7 @@ static int nvshmemt_libfabric_connect_endpoints(nvshmem_transport_t t, int *sele
                 op = op + ((num_recvs_per_pe * i) + j);
                 assert(op != NULL);
                 status = fi_recv(state->eps[i].endpoint, op,
-                                 sizeof(nvshmemt_libfabric_gdr_op_ctx_t) - sizeof(struct fi_context2), state->mr, FI_ADDR_UNSPEC, &op->ofi_context);
+                                 sizeof(nvshmemt_libfabric_gdr_op_ctx_t) - sizeof(struct fi_context2), fi_mr_desc(state->mr), FI_ADDR_UNSPEC, &op->ofi_context);
             }
             NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
                                   "Unable to post recv to ep. Error: %d: %s\n", status,
