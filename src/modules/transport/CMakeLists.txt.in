@@ -41,6 +41,7 @@ option(NVSHMEM_BUILD_IBGDA_TRANSPORT "Enable compilation of the ibgda transport"
 option(NVSHMEM_BUILD_IBRC_TRANSPORT "Enable compilation of the ibrc transport" OFF)
 option(NVSHMEM_BUILD_LIBFABRIC_TRANSPORT "Enable compilation of the libfabric transport" OFF)
 option(NVSHMEM_BUILD_UCX_TRANSPORT "Enable compilation of the UCX transport" OFF)
+option(NVSHMEM_BUILD_EFAGDA_TRANSPORT "Enable compilation of the efagda transport" OFF)
 
 set(CUDA_HOME ${CUDA_HOME_DEFAULT} CACHE PATH "path to CUDA installation")
 set(GDRCOPY_HOME ${GDRCOPY_HOME_DEFAULT} CACHE PATH "path to GDRCOPY installation")
@@ -162,4 +163,9 @@ endif()
 if(NVSHMEM_BUILD_UCX_TRANSPORT)
   find_package(UCX PATHS ${UCX_HOME} REQUIRED)
   add_subdirectory(ucx)
+endif()
+
+if(NVSHMEM_BUILD_EFAGDA_TRANSPORT)
+  find_library(FABRIC_lib NAMES fabric HINTS "${LIBFABRIC_HOME}/lib" "${LIBFABRIC_HOME}/lib64")
+  add_subdirectory(efagda)
 endif()

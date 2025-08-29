@@ -137,7 +137,7 @@ out:
     return status;
 }
 
-static int nvshmemt_libfabric_progress(nvshmem_transport_t transport, int is_proxy) {
+int nvshmemt_libfabric_progress(nvshmem_transport_t transport, int is_proxy) {
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)transport->state;
     nvshmemt_libfabric_endpoint_t *ep;
     int status;
@@ -545,7 +545,7 @@ out:
     return status;
 }
 
-static int nvshmemt_libfabric_quiet(struct nvshmem_transport *tcurr, int pe, int is_proxy) {
+int nvshmemt_libfabric_quiet(struct nvshmem_transport *tcurr, int pe, int is_proxy) {
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)tcurr->state;
     nvshmemt_libfabric_endpoint_t *ep;
     int status = 0;
@@ -1056,7 +1056,7 @@ out:
     return status;
 }
 
-static int nvshmemt_libfabric_enforce_cst(struct nvshmem_transport *tcurr) {
+int nvshmemt_libfabric_enforce_cst(struct nvshmem_transport *tcurr) {
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)tcurr->state;
     uint64_t num_retries = 0;
     int status;
@@ -1123,7 +1123,7 @@ skip:
     return status;
 }
 
-static int nvshmemt_libfabric_release_mem_handle(nvshmem_mem_handle_t *mem_handle,
+int nvshmemt_libfabric_release_mem_handle(nvshmem_mem_handle_t *mem_handle,
                                                  nvshmem_transport_t t) {
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)t->state;
     nvshmemt_libfabric_mem_handle_t *fabric_handle;
@@ -1178,7 +1178,7 @@ out:
     return status;
 }
 
-static int nvshmemt_libfabric_get_mem_handle(nvshmem_mem_handle_t *mem_handle, void *buf,
+int nvshmemt_libfabric_get_mem_handle(nvshmem_mem_handle_t *mem_handle, void *buf,
                                              size_t length, nvshmem_transport_t t,
                                              bool local_only) {
     nvshmemt_libfabric_mem_handle_t *fabric_handle;
@@ -1367,7 +1367,7 @@ out:
     return status;
 }
 
-static int nvshmemt_libfabric_can_reach_peer(int *access,
+int nvshmemt_libfabric_can_reach_peer(int *access,
                                              struct nvshmem_transport_pe_info *peer_info,
                                              nvshmem_transport_t t) {
     *access = NVSHMEM_TRANSPORT_CAP_CPU_WRITE | NVSHMEM_TRANSPORT_CAP_CPU_READ |
@@ -1419,7 +1419,7 @@ out:
     return status;
 }
 
-static int nvshmemt_libfabric_connect_endpoints(nvshmem_transport_t t, int *selected_dev_ids,
+int nvshmemt_libfabric_connect_endpoints(nvshmem_transport_t t, int *selected_dev_ids,
                                                 int num_selected_devs) {
     nvshmemt_libfabric_state_t *state = (nvshmemt_libfabric_state_t *)t->state;
     nvshmemt_libfabric_ep_name_t *all_ep_names = NULL;
@@ -1775,7 +1775,7 @@ out_already_connected:
     return status;
 }
 
-static int nvshmemt_libfabric_finalize(nvshmem_transport_t transport) {
+int nvshmemt_libfabric_finalize(nvshmem_transport_t transport) {
     nvshmemt_libfabric_state_t *libfabric_state;
     int status;
 
@@ -2052,7 +2052,7 @@ out:
     return status;
 }
 
-int nvshmemt_init(nvshmem_transport_t *t, struct nvshmemi_cuda_fn_table *table, int api_version) {
+int nvshmemt_libfabric_init(nvshmem_transport_t *t, struct nvshmemi_cuda_fn_table *table, int api_version) {
     nvshmemt_libfabric_state_t *libfabric_state = NULL;
     nvshmem_transport_t transport = NULL;
     struct nvshmemi_options_s options;

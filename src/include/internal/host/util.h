@@ -203,7 +203,7 @@ enum { NVSHMEMI_OPTIONS_STYLE_INFO = 0, NVSHMEMI_OPTIONS_STYLE_RST };
 int nvshmemi_options_init(void);
 void nvshmemi_options_print(int style);
 void nvshmemi_check_state_and_init();
-void nvshmemi_ibgda_get_device_state(void **state);
+void nvshmemi_get_device_transport_state(void **state);
 
 #define NVSHMEMU_FOR_EACH(__index, count) \
     for (uint64_t __index = 0; __index < (uint64_t)(count); __index++)

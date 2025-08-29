@@ -11,6 +11,7 @@
 #cmakedefine NVSHMEM_IBDEVX_SUPPORT
 #cmakedefine NVSHMEM_IBRC_SUPPORT
 #cmakedefine NVSHMEM_LIBFABRIC_SUPPORT
+#cmakedefine NVSHMEM_EFAGDA_SUPPORT
 #cmakedefine NVSHMEM_MPI_SUPPORT
 #cmakedefine NVSHMEM_NVTX
 #cmakedefine NVSHMEM_PMIX_SUPPORT
@@ -30,6 +31,9 @@
 #cmakedefine NVSHMEM_ENABLE_ALL_DEVICE_INLINING
 #cmakedefine NVSHMEM_HOSTLIB_ONLY
 
+/* TODO: When building the bitcode library, we need to check if EFA can be used.
+ * This check for IBGDA will likely be removed in ~3.5.
+ */
 #if defined __clang_llvm_bitcode_lib__ || defined NVSHMEM_HOSTLIB_ONLY
 #undef NVSHMEM_IBGDA_SUPPORT
 #undef NVSHMEM_IBGDA_SUPPORT_GPUMEM_ONLY

@@ -22,6 +22,8 @@
 #include <stdint.h>  // for uint64_t, uint32_t, uint16_t, uint8_t
 #include <limits.h>
 
+#include "device_host/nvshmem_types.h"
+
 #define nvshmemi_init_ibgda_device_cq(cq)                            \
     do {                                                             \
         cq.version = (1 << 16) + sizeof(nvshmemi_ibgda_device_cq_t); \
@@ -281,11 +283,14 @@ typedef struct {
 static_assert(sizeof(nvshmemi_ibgda_device_state_v1) == 8384,
               "ibgda_device_state_v1 must be 8384 bytes.");
 
+static_assert(sizeof(nvshmemi_ibgda_device_state_v1) <= sizeof(nvshmemi_device_transport_state_t),
+              "ibgda_device_state_v1 must be less than device_transport_state_t.");
+
 typedef nvshmemi_ibgda_device_state_v1 nvshmemi_ibgda_device_state_t;
 
 #if defined(__CUDACC_RDC__) || defined(__NVSHMEM_NUMBA_SUPPORT__)
 #define EXTERN_CONSTANT extern __constant__
-EXTERN_CONSTANT nvshmemi_ibgda_device_state_t nvshmemi_ibgda_device_state_d;
+EXTERN_CONSTANT nvshmemi_device_transport_state_t nvshmemi_device_transport_state_d;
 #undef EXTERN_CONSTANT
 #endif
 

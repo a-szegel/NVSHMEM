@@ -205,9 +205,18 @@
             NULL,                                         /* global_exit_request_state */         \
             NULL,                                         /* global_exit_code */                  \
             false,                                        /* ibgda_is_initialized */              \
+            false,                                        /* efagda_is_initialized */             \
             false,                                        /* nvshmemi_is_nvshmem_initialized */   \
             false                                         /* nvshmemi_is_nvshmem_bootstrapped */  \
     }
+
+#define NVSHMEMI_DEVICE_TRANSPORT_STATE_INITIALIZER                          \
+    {                                                                        \
+        (1 << 16) + sizeof(nvshmemi_device_transport_state_t), /* version */ \
+            NULL, /* state */                                                \
+    }
+
+
 #else
 #include <cuda/std/cstddef>
 #include <cuda/std/cstdint>
@@ -464,6 +473,11 @@ typedef struct {
     int *global_exit_code;
 
     bool ibgda_is_initialized;
+    /* We will need to move this to the end of the file in order to maintain backwards compatibility
+     * Unless there is already a hole in the struct here.
+     */
+    bool efagda_is_initialized;
+
     bool nvshmemi_is_nvshmem_initialized;
     bool nvshmemi_is_nvshmem_bootstrapped;
 } nvshmemi_device_host_state_v1;
@@ -471,5 +485,13 @@ static_assert(sizeof(nvshmemi_device_host_state_v1) == 776,
               "device_host_state_v1 must be 776 bytes.");
 
 typedef nvshmemi_device_host_state_v1 nvshmemi_device_host_state_t;
+
+/* I think we can introduce a new type here */
+typedef struct {
+    int version;
+    alignas(16) char state[10240]; //10k
+} nvshmemi_device_transport_state_v1;
+
+typedef nvshmemi_device_transport_state_v1 nvshmemi_device_transport_state_t;
 
 #endif /* NVSHMEM_TYPES_H */
