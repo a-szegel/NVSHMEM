@@ -535,6 +535,7 @@ if(NVSHMEM_LIBFABRIC_SUPPORT)
   nvshmem_library_set_base_config(nvshmem_transport_libfabric)
   target_sources(nvshmem_transport_libfabric PRIVATE
                  modules/transport/libfabric/libfabric.cpp
+                 modules/transport/libfabric/libfabric_plugin.cpp
                  modules/transport/common/transport_common.cpp
   )
   target_link_options(nvshmem_transport_libfabric PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/../nvshmem_transport.sym")
@@ -551,6 +552,34 @@ if(NVSHMEM_LIBFABRIC_SUPPORT)
     )
   endif()
   set(ACTIVE_TRANSPORTS ${ACTIVE_TRANSPORTS} nvshmem_transport_libfabric)
+endif()
+
+if(NVSHMEM_EFAGDA_SUPPORT)
+  find_library(FABRIC_lib NAMES fabric HINTS "${LIBFABRIC_HOME}/lib" "${LIBFABRIC_HOME}/lib64")
+  add_library(
+    nvshmem_transport_efagda SHARED
+  )
+  nvshmem_library_set_base_config(nvshmem_transport_efagda)
+  target_sources(nvshmem_transport_efagda PRIVATE
+                 modules/transport/libfabric/libfabric.cpp
+                 modules/transport/efagda/efagda.cpp
+                 modules/transport/common/transport_common.cpp
+  )
+  target_link_options(nvshmem_transport_efagda PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/../nvshmem_transport.sym")
+  target_include_directories(nvshmem_transport_efagda
+                             PRIVATE include
+                             modules/transport/common
+                             modules/transport/libfabric/
+                             "${LIBFABRIC_HOME}/include/"
+  )
+  target_link_libraries(nvshmem_transport_efagda PRIVATE ${FABRIC_lib} CUDA::cudart_static CUDA::cuda_driver)
+  if(NVSHMEM_USE_GDRCOPY)
+    target_include_directories(nvshmem_transport_efagda PRIVATE ${GDRCOPY_INCLUDE})
+    target_sources(nvshmem_transport_efagda PRIVATE
+                   modules/transport/common/transport_gdr_common.cpp
+    )
+  endif()
+  set(ACTIVE_TRANSPORTS ${ACTIVE_TRANSPORTS} nvshmem_transport_efagda)
 endif()
 
 set_target_properties(${ACTIVE_TRANSPORTS}
@@ -652,6 +681,7 @@ set(INC_EXPORTS
     non_abi/device/coll/reducescatter.cuh
     non_abi/device/coll/utils.cuh
     non_abi/device/wait/nvshmemi_wait_until_apis.cuh
+    non_abi/device/pt-to-pt/efagda_device.cuh
     non_abi/device/pt-to-pt/ibgda_device.cuh
     non_abi/device/pt-to-pt/proxy_device.cuh
     non_abi/device/pt-to-pt/utils_device.h
@@ -659,6 +689,7 @@ set(INC_EXPORTS
     device_host/nvshmem_common.cuh
     device_host/nvshmem_tensor.h
     device_host_transport/nvshmem_common_ibgda.h
+    device_host_transport/nvshmem_common_efagda.h
     device_host_transport/nvshmem_constants.h
     non_abi/device/team/nvshmemi_team_defines.cuh
     host/nvshmem_api.h
@@ -742,6 +773,7 @@ configure_file(${CMAKE_SOURCE_DIR}/nvshmem_transport.sym
 set(TRANSPORT_INC_EXPORTS
     bootstrap_host_transport/env_defs_internal.h
     device_host_transport/nvshmem_common_ibgda.h
+    device_host_transport/nvshmem_common_efagda.h
     device_host_transport/nvshmem_common_transport.h
     device_host_transport/nvshmem_constants.h
     internal/bootstrap_host_transport/nvshmemi_bootstrap_defines.h
@@ -774,6 +806,7 @@ set(TRANSPORT_EXPORTS
     ibgda/ibgda.cpp
     ibrc/ibrc.cpp
     libfabric/libfabric.cpp
+    libfabric/libfabric_plugin.cpp
     libfabric/libfabric.h
     ucx/ucx.cpp
     ucx/ucx.h
@@ -1050,7 +1083,7 @@ add_custom_target(package_src_target
     COMMAND "${CMAKE_COMMAND}" --build . --target package_source
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     COMMENT "Package Build"
-    DEPENDS build_bindings_cybind 
+    DEPENDS build_bindings_cybind
     VERBATIM
 )
 # End Installation definitions

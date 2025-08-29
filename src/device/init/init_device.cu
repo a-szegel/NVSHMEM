@@ -23,7 +23,14 @@
 
 #ifdef NVSHMEM_IBGDA_SUPPORT
 #include "device_host_transport/nvshmem_common_ibgda.h"
-__constant__ __attribute__((used)) nvshmemi_ibgda_device_state_t nvshmemi_ibgda_device_state_d;
+#endif
+
+#ifdef NVSHMEM_EFAGDA_SUPPORT
+#include "device_host_transport/nvshmem_common_efagda.h"
+#endif
+
+#if defined(NVSHMEM_IBGDA_SUPPORT) || defined(NVSHMEM_EFAGDA_SUPPORT)
+__constant__ __attribute__((used)) nvshmemi_device_transport_state_t nvshmemi_device_transport_state_d;
 #endif
 
 nvshmemi_device_state_t nvshmemi_device_only_state;
@@ -122,10 +129,10 @@ void nvshmemi_get_mem_handle(void **dev_state_ptr, void **transport_dev_state_pt
         NVSHMEMI_ERROR_PRINT("Unable to access device state. %d\n", status);
         *dev_state_ptr = NULL;
     }
-#ifdef NVSHMEM_IBGDA_SUPPORT
-    status = cudaGetSymbolAddress(transport_dev_state_ptr, nvshmemi_ibgda_device_state_d);
+#if defined(NVSHMEM_IBGDA_SUPPORT) || defined(NVSHMEM_EFAGDA_SUPPORT)
+    status = cudaGetSymbolAddress(transport_dev_state_ptr, nvshmemi_device_transport_state_d);
     if (status) {
-        NVSHMEMI_ERROR_PRINT("Unable to access ibgda device state. %d\n", status);
+        NVSHMEMI_ERROR_PRINT("Unable to access device transport state. %d\n", status);
         *transport_dev_state_ptr = NULL;
     }
 #endif
@@ -173,10 +180,10 @@ void nvshmemi_finalize() {
         nvshmemid_hostlib_finalize(NULL, NULL);
         return;
     }
-#ifdef NVSHMEM_IBGDA_SUPPORT
-    status = cudaGetSymbolAddress(&transport_dev_state_ptr, nvshmemi_ibgda_device_state_d);
+#if defined(NVSHMEM_IBGDA_SUPPORT) || defined(NVSHMEM_EFAGDA_SUPPORT)
+    status = cudaGetSymbolAddress(&transport_dev_state_ptr, nvshmemi_device_transport_state_d);
     if (status) {
-        NVSHMEMI_ERROR_PRINT("Unable to properly unregister device state.\n");
+        NVSHMEMI_ERROR_PRINT("Unable to properly unregister device transport state.\n");
         nvshmemid_hostlib_finalize(NULL, NULL);
         return;
     }

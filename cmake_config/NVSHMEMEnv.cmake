@@ -68,6 +68,7 @@ nvshmem_add_default_off_option(NVSHMEM_IBGDA_SUPPORT_GPUMEM_ONLY "Force the IBGD
 nvshmem_add_default_off_option(NVSHMEM_IBDEVX_SUPPORT "Enable compilation of the IBDevX remote transport")
 nvshmem_add_default_off_option(NVSHMEM_LIBFABRIC_SUPPORT "Enable compilation of the libfabric remote transport")
 nvshmem_add_default_off_option(NVSHMEM_UCX_SUPPORT "Enable compilation of the UCX remote transport")
+nvshmem_add_default_off_option(NVSHMEM_EFAGDA_SUPPORT "Enable compilation of the EFAGDA remote transport")
 
 message( "\n__FUNCTIONALITY__\n")
 nvshmem_add_default_off_option(NVSHMEM_USE_DLMALLOC "Set dlmalloc as the NVSHMEM heap allocation method")
