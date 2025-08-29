@@ -1230,6 +1230,7 @@ void progress_transports(proxy_state_t *proxy_state) {
     for (int i = 0; i < state->num_initialized_transports; i++) {
         struct nvshmem_transport *tcurr = state->transports[i];
 
+        /* TODO: Is this the correct for IBGDA? */
         if (!((proxy_state->transport_bitmap) & (1 << i)) &&
             (tcurr->type != NVSHMEM_TRANSPORT_LIB_CODE_IBGDA))
             continue;

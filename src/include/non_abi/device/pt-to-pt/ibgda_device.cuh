@@ -175,7 +175,7 @@ __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE uint64_t ibgda_query_gl
 
 __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE nvshmemi_ibgda_device_state_t *
 ibgda_get_state() {
-    return &nvshmemi_ibgda_device_state_d;
+    return (nvshmemi_ibgda_device_state_t *)&nvshmemi_device_transport_state_d;
 }
 
 __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE bool ibgda_is_rc_enabled() {

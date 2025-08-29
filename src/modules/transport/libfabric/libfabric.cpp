@@ -127,7 +127,7 @@ out:
     return status;
 }
 
-static int nvshmemt_libfabric_progress(nvshmem_transport_t transport, int is_proxy) {
+int nvshmemt_libfabric_progress(nvshmem_transport_t transport, int is_proxy) {
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)transport->state;
     nvshmemt_libfabric_endpoint_t *ep;
     int status;
@@ -232,6 +232,11 @@ static inline int try_again(nvshmem_transport_t transport, int *status, uint64_t
 int gdrcopy_amo_ack(nvshmem_transport_t transport, nvshmemt_libfabric_endpoint_t *ep, fi_addr_t dest_addr,
                     int pe, int is_proxy) {
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)transport->state;
+
+    // if (dest_addr > 3) {
+    //     printf("[PE %d] gdrcopy_amo_ack: Sending put-signal ACK to PE %d, dest_addr=%d, is_proxy=%d\n",
+    //        transport->my_pe, pe, (int) dest_addr, is_proxy);
+    // }
     nvshmemt_libfabric_gdr_op_ctx_t *resp_op = NULL;
     uint64_t num_retries = 0;
     int status;
@@ -485,10 +490,14 @@ int nvshmemt_libfabric_put_signal_completion(nvshmem_transport_t transport,
     if (is_write_comp) {
         map_key = *addr << 32 | (uint32_t)entry->data;
         progress_count = -1;
+        // printf("[PE %d] libfabric_put_signal_completion: Write Completion, map_key=0x%lx, seq=%u, addr: %d\n",
+        //        transport->my_pe, map_key,  (uint32_t)entry->data, (int) *addr);
     } else {
         sig_op = (nvshmemt_libfabric_gdr_signal_op *) container_of(entry->op_context, nvshmemt_libfabric_gdr_op_ctx_t, ofi_context);
         map_key = *addr << 32 | sig_op->sequence_count;
         progress_count = (int)sig_op->num_writes;
+        // printf("[PE %d] libfabric_put_signal_completion: Signal Completion, map_key=0x%lx, seq=%u, num_writes=%d, addr: %d\n",
+        //        transport->my_pe, map_key, sig_op->sequence_count, sig_op->num_writes, (int) *addr);
 
         /* The EFA provider has an inline send size of 32 bytes.
          * The gdr atomic fi_send message is 72 bytes and does not
@@ -512,6 +521,8 @@ int nvshmemt_libfabric_put_signal_completion(nvshmem_transport_t transport,
         if (is_write_comp) {
             op = iter->second.first;
         }
+        // printf("[PE %d] libfabric_put_signal_completion: Performing Atomic, map_key=0x%lx, addr=%d, op=%d, target_addr=%p, swap_add=%lu, src_pe=%d\n",
+        //        transport->my_pe, map_key, (int) op->src_addr, op->send_amo.op, op->send_amo.target_addr, op->send_amo.swap_add, op->send_amo.src_pe);
         perform_gdrcopy_amo<uint64_t>(transport, op, is_proxy);
         ep->proxy_put_signal_comp_map->erase(iter);
         status = fi_recv(ep->endpoint, op, NVSHMEM_STAGED_AMO_WIREDATA_SIZE,
@@ -522,7 +533,7 @@ out:
     return status;
 }
 
-static int nvshmemt_libfabric_quiet(struct nvshmem_transport *tcurr, int pe, int is_proxy) {
+int nvshmemt_libfabric_quiet(struct nvshmem_transport *tcurr, int pe, int is_proxy) {
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)tcurr->state;
     nvshmemt_libfabric_endpoint_t *ep;
     int status = 0;
@@ -1018,7 +1029,7 @@ out:
     return status;
 }
 
-static int nvshmemt_libfabric_enforce_cst(struct nvshmem_transport *tcurr) {
+int nvshmemt_libfabric_enforce_cst(struct nvshmem_transport *tcurr) {
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)tcurr->state;
     uint64_t num_retries = 0;
     int status;
@@ -1085,7 +1096,7 @@ skip:
     return status;
 }
 
-static int nvshmemt_libfabric_release_mem_handle(nvshmem_mem_handle_t *mem_handle,
+int nvshmemt_libfabric_release_mem_handle(nvshmem_mem_handle_t *mem_handle,
                                                  nvshmem_transport_t t) {
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)t->state;
     nvshmemt_libfabric_mem_handle_t *fabric_handle;
@@ -1140,7 +1151,7 @@ out:
     return status;
 }
 
-static int nvshmemt_libfabric_get_mem_handle(nvshmem_mem_handle_t *mem_handle, void *buf,
+int nvshmemt_libfabric_get_mem_handle(nvshmem_mem_handle_t *mem_handle, void *buf,
                                              size_t length, nvshmem_transport_t t,
                                              bool local_only) {
     nvshmemt_libfabric_mem_handle_t *fabric_handle;
@@ -1329,7 +1340,7 @@ out:
     return status;
 }
 
-static int nvshmemt_libfabric_can_reach_peer(int *access,
+int nvshmemt_libfabric_can_reach_peer(int *access,
                                              struct nvshmem_transport_pe_info *peer_info,
                                              nvshmem_transport_t t) {
     *access = NVSHMEM_TRANSPORT_CAP_CPU_WRITE | NVSHMEM_TRANSPORT_CAP_CPU_READ |
@@ -1381,7 +1392,7 @@ out:
     return status;
 }
 
-static int nvshmemt_libfabric_connect_endpoints(nvshmem_transport_t t, int *selected_dev_ids,
+int nvshmemt_libfabric_connect_endpoints(nvshmem_transport_t t, int *selected_dev_ids,
                                                 int num_selected_devs) {
     nvshmemt_libfabric_state_t *state = (nvshmemt_libfabric_state_t *)t->state;
     nvshmemt_libfabric_ep_name_t *all_ep_names = NULL;
@@ -1737,7 +1748,7 @@ out_already_connected:
     return status;
 }
 
-static int nvshmemt_libfabric_finalize(nvshmem_transport_t transport) {
+int nvshmemt_libfabric_finalize(nvshmem_transport_t transport) {
     nvshmemt_libfabric_state_t *libfabric_state;
     int status;
 
@@ -2014,7 +2025,7 @@ out:
     return status;
 }
 
-int nvshmemt_init(nvshmem_transport_t *t, struct nvshmemi_cuda_fn_table *table, int api_version) {
+int nvshmemt_libfabric_init(nvshmem_transport_t *t, struct nvshmemi_cuda_fn_table *table, int api_version) {
     nvshmemt_libfabric_state_t *libfabric_state = NULL;
     nvshmem_transport_t transport = NULL;
     struct nvshmemi_options_s options;

@@ -33,6 +33,10 @@
 #include "device_host_transport/nvshmem_common_ibgda.h"
 #endif
 
+#ifdef NVSHMEM_EFAGDA_SUPPORT
+#include "device_host_transport/nvshmem_common_efagda.h"
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 #include "topo.h"
@@ -87,10 +91,10 @@ nvshmemi_device_host_state_t nvshmemi_device_state;
 
 void nvshmemi_get_device_state(void **state) { *state = &nvshmemi_device_state; }
 
-#ifdef NVSHMEM_IBGDA_SUPPORT
-nvshmemi_ibgda_device_state_t nvshmemi_ibgda_device_state;
+#if defined(NVSHMEM_IBGDA_SUPPORT) || defined(NVSHMEM_EFAGDA_SUPPORT)
 static std::map<void *, int> registered_transport_device_states;
-void nvshmemi_ibgda_get_device_state(void **state) { *state = &nvshmemi_ibgda_device_state; }
+nvshmemi_device_transport_state_t nvshmemi_device_transport_state;
+void nvshmemi_get_device_transport_state(void **state) { *state = &nvshmemi_device_transport_state; }
 #endif
 
 static inline bool nvshmemi_is_version_compatible(const nvshmemi_version_t version_host,
@@ -117,7 +121,7 @@ static int register_state_ptr(void *common, void *transport) {
         registered_device_states.emplace(common, 1);
     }
 
-#ifdef NVSHMEM_IBGDA_SUPPORT
+#if defined(NVSHMEM_IBGDA_SUPPORT) || defined(NVSHMEM_EFAGDA_SUPPORT)
     if (transport != NULL) {
         if (registered_transport_device_states.find(transport) !=
             registered_transport_device_states.end()) {
@@ -126,17 +130,16 @@ static int register_state_ptr(void *common, void *transport) {
         } else {
             registered_transport_device_states.emplace(transport, 1);
         }
+    }
 #else
     if (transport != NULL) {
         NVSHMEMI_ERROR_PRINT(
-            "IBGDA not enabled by host lib, but passed "
-            "in by device. Host ignoring IBGDA state.\n");
+            "IBGDA/EFAGDA not enabled by host lib, but passed "
+            "in by device. Host ignoring IBGDA/EFAGDA state.\n");
         return 0;
     }
 #endif
-#ifdef NVSHMEM_IBGDA_SUPPORT
-    }
-#endif
+
     return 0;
 }
 
@@ -178,14 +181,21 @@ int nvshmemi_update_device_state() {
         num_initialized_device_states = iter;
     }
 
+    bool gda_initialized = false;
 #ifdef NVSHMEM_IBGDA_SUPPORT
-    if (nvshmemi_options.IB_ENABLE_IBGDA) {
-        nvshmemi_ibgda_device_state_t *ibgda_device_state;
-        nvshmemi_ibgda_get_device_state((void **)&ibgda_device_state);
+    gda_initialized = nvshmemi_options.IB_ENABLE_IBGDA;
+#endif
+#ifdef NVSHMEM_EFAGDA_SUPPORT
+    if (!gda_initialized) gda_initialized = nvshmemi_device_state.efagda_is_initialized;
+#endif
+#if defined(NVSHMEM_IBGDA_SUPPORT) || defined(NVSHMEM_EFAGDA_SUPPORT)
+    if (gda_initialized) {
+        nvshmemi_device_transport_state_t *device_transport_state;
+        nvshmemi_get_device_transport_state((void **)&device_transport_state);
         for (auto it = registered_transport_device_states.cbegin();
              it != registered_transport_device_states.cend(); ++it) {
-            status = cudaMemcpy((it->first), (void *)ibgda_device_state,
-                                sizeof(nvshmemi_ibgda_device_state_t), cudaMemcpyHostToDevice);
+            status = cudaMemcpy((it->first), (void *)device_transport_state,
+                                sizeof(nvshmemi_device_transport_state_t), cudaMemcpyHostToDevice);
             if (status) break;
         }
     }
@@ -213,7 +223,7 @@ static int unregister_state_ptr(void *common, void *transport) {
         }
     }
 
-#ifdef NVSHMEM_IBGDA_SUPPORT
+#if defined(NVSHMEM_IBGDA_SUPPORT) || defined(NVSHMEM_EFAGDA_SUPPORT)
     bool transport_state_found = false;
     if (transport != NULL) {
         for (auto it = registered_transport_device_states.cbegin();
@@ -233,12 +243,13 @@ static int unregister_state_ptr(void *common, void *transport) {
         }
         if (!transport_state_found && device_state_found) {
             NVSHMEMI_ERROR_PRINT(
-                "Invalid IBGDA handle, but valid device state passed for "
+                "Invalid IBGDA/EFAGDA handle, but valid device state passed for "
                 "removal. This is not a fatal error, but indicates something "
                 "unexpected is happening. Standard device state removed.\n");
         }
     }
 #endif
+
     if (device_state_found) {
         return NVSHMEMX_SUCCESS;
     }
@@ -1148,9 +1159,6 @@ int nvshmemid_hostlib_init_attr(int requested, int *provided, unsigned int boots
 
     if (!nvshmemi_device_state.nvshmemi_is_nvshmem_bootstrapped) {
         nvshmemi_device_state = NVSHMEMI_DEVICE_HOST_STATE_INITIALIZER;
-#ifdef NVSHMEM_IBGDA_SUPPORT
-        nvshmemi_init_ibgda_device_state(nvshmemi_ibgda_device_state);
-#endif
     }
 
     if (cb) {
@@ -1540,6 +1548,9 @@ int set_job_connectivity(nvshmemi_state_t *state) {
                            (NVSHMEM_TRANSPORT_CAP_MAP_GPU_ST | NVSHMEM_TRANSPORT_CAP_MAP_GPU_LD)) {
                     peer_connectivity = std::min(peer_connectivity, (int)NVSHMEMI_JOB_GPU_LDST);
                 }
+                /*
+                 * TODO: Is this the same for EFAGDA?
+                 */
 #ifdef NVSHMEM_IBGDA_SUPPORT
                 else if (state->transports[j]->cap[i] &
                          (NVSHMEM_TRANSPORT_CAP_GPU_WRITE | NVSHMEM_TRANSPORT_CAP_GPU_READ |
@@ -1749,10 +1760,10 @@ int nvshmemx_culibrary_init(CUlibrary library) {
                 cuLibraryGetGlobal(&state_dptr, &state_size, library, "nvshmemi_device_state_d"),
                 status, out);
 
-#ifdef NVSHMEM_IBGDA_SUPPORT
+#if defined(NVSHMEM_IBGDA_SUPPORT) || defined(NVSHMEM_EFAGDA_SUPPORT)
     CUCHECKIGNORE_NO_PRINT(nvshmemi_cuda_syms,
                            cuLibraryGetGlobal(&transport_dptr, &transport_size, library,
-                                              "nvshmemi_ibgda_device_state_d"));
+                                              "nvshmemi_device_transport_state_d"));
 #endif
 
     status = nvshmemi_cuobject_init_common(lib_dptr, lib_size, state_dptr, transport_dptr);
@@ -1774,10 +1785,10 @@ int nvshmemx_cumodule_init(CUmodule module) {
                 cuModuleGetGlobal(&state_dptr, &state_size, module, "nvshmemi_device_state_d"),
                 status, out);
 
-#ifdef NVSHMEM_IBGDA_SUPPORT
+#if defined(NVSHMEM_IBGDA_SUPPORT) || defined(NVSHMEM_EFAGDA_SUPPORT)
     CUCHECKIGNORE_NO_PRINT(nvshmemi_cuda_syms,
                            cuModuleGetGlobal(&transport_dptr, &transport_size, module,
-                                             "nvshmemi_ibgda_device_state_d"));
+                                             "nvshmemi_device_transport_state_d"));
 #endif
 
     status = nvshmemi_cuobject_init_common(lib_dptr, lib_size, state_dptr, transport_dptr);
@@ -1794,9 +1805,9 @@ int nvshmemx_cumodule_finalize(CUmodule module) {
 
     CUCHECKGOTO(nvshmemi_cuda_syms,
                 cuModuleGetGlobal(&dptr, &size, module, "nvshmemi_device_state_d"), status, out);
-#ifdef NVSHMEM_IBGDA_SUPPORT
+#if defined(NVSHMEM_IBGDA_SUPPORT) || defined(NVSHMEM_EFAGDA_SUPPORT)
     CUCHECKIGNORE_NO_PRINT(nvshmemi_cuda_syms, cuModuleGetGlobal(&transport_dptr, &size, module,
-                                                                 "nvshmemi_ibgda_device_state_d"));
+                                                                 "nvshmemi_device_transport_state_d"));
 #endif
     status = unregister_state_ptr((void *)dptr, (void *)transport_dptr);
     NVSHMEMI_NE_ERROR_JMP(status, NVSHMEMX_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
@@ -1814,9 +1825,9 @@ int nvshmemx_culibrary_finalize(CUlibrary library) {
     CUCHECKGOTO(nvshmemi_cuda_syms,
                 cuLibraryGetGlobal(&dptr, &size, library, "nvshmemi_device_state_d"), status, out);
 
-#ifdef NVSHMEM_IBGDA_SUPPORT
+#if defined(NVSHMEM_IBGDA_SUPPORT) || defined(NVSHMEM_EFAGDA_SUPPORT)
     CUCHECKIGNORE_NO_PRINT(nvshmemi_cuda_syms, cuLibraryGetGlobal(&transport_dptr, &size, library,
-                                                                  "nvshmemi_ibgda_device_state_d"));
+                                                                  "nvshmemi_device_transport_state_d"));
 #endif
     status = unregister_state_ptr((void *)dptr, (void *)transport_dptr);
     NVSHMEMI_NE_ERROR_JMP(status, NVSHMEMX_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,

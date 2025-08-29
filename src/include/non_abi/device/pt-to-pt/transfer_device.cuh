@@ -18,6 +18,10 @@
 #include "non_abi/device/pt-to-pt/ibgda_device.cuh"
 #endif
 
+#ifdef NVSHMEM_EFAGDA_SUPPORT
+#include "non_abi/device/pt-to-pt/efagda_device.cuh"
+#endif
+
 #if defined __clang_llvm_bitcode_lib__
 #define NVSHMEMI_TRANSFER_INLINE \
     __attribute__((noinline, section(".text.compute"), not_tail_called))
@@ -80,11 +84,16 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
 #ifdef NVSHMEM_IBGDA_SUPPORT
     if (nvshmemi_device_state_d.ibgda_is_initialized) {
         nvshmemi_ibgda_rma_p<T>(rptr, value, pe);
-    } else
-#endif
-    {
-        nvshmemi_proxy_rma_p<T>(rptr, value, pe);
+        return;
     }
+#endif
+//#ifdef NVSHMEM_EFAGDA_SUPPORT
+//    if (nvshmemi_device_state_d.efagda_is_initialized) {
+//        nvshmemi_efagda_rma_p<T>(rptr, value, pe);
+//        return;
+//    }
+//#endif
+    nvshmemi_proxy_rma_p<T>(rptr, value, pe);
 }
 
 #define TRANSFER_DECL_RMA_P(Type) \
@@ -98,11 +107,14 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE T nvshmemi_transfer
 #ifdef NVSHMEM_IBGDA_SUPPORT
     if (nvshmemi_device_state_d.ibgda_is_initialized) {
         return nvshmemi_ibgda_rma_g<T>(rptr, pe);
-    } else
-#endif
-    {
-        return nvshmemi_proxy_rma_g<T>(rptr, pe);
     }
+#endif
+//#ifdef NVSHMEM_EFAGDA_SUPPORT
+//    if (nvshmemi_device_state_d.efagda_is_initialized) {
+//        return nvshmemi_efagda_rma_g<T>(rptr, pe);
+//    }
+//#endif
+    return nvshmemi_proxy_rma_g<T>(rptr, pe);
 }
 
 #define TRANSFER_DECL_RMA_G(Type) \
@@ -116,17 +128,22 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
 #ifdef NVSHMEM_IBGDA_SUPPORT
     if (nvshmemi_device_state_d.ibgda_is_initialized) {
         nvshmemi_ibgda_rma<SCOPE, channel_op>(rptr, lptr, bytes, pe);
-    } else
+        return;
+    }
 #endif
-    {
-        int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
-        if (!myIdx) {
-            nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, channel_op);
-            nvshmemi_proxy_quiet(false);
-            if (SCOPE == nvshmemi_threadgroup_thread)
-                __threadfence_block(); /* to prevent reuse of src buffer before quiet completion;
-                                    for warp/block scope, following sync op will accomplish that */
-        }
+#ifdef NVSHMEM_EFAGDA_SUPPORT
+    if (nvshmemi_device_state_d.efagda_is_initialized) {
+        nvshmemi_efagda_rma<SCOPE, channel_op>(rptr, lptr, bytes, pe);
+        return;
+    }
+#endif
+    int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
+    if (!myIdx) {
+        nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, channel_op);
+        nvshmemi_proxy_quiet(false);
+        if (SCOPE == nvshmemi_threadgroup_thread)
+            __threadfence_block(); /* to prevent reuse of src buffer before quiet completion;
+                                for warp/block scope, following sync op will accomplish that */
     }
 }
 
@@ -145,20 +162,25 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
 #ifdef NVSHMEM_IBGDA_SUPPORT
     if (nvshmemi_device_state_d.ibgda_is_initialized) {
         nvshmemi_ibgda_put_signal<SCOPE>(rptr, lptr, bytes, sig_addr, signal, sig_op, pe, is_nbi);
-    } else
+        return;
+    }
 #endif
-    {
-        int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
-        if (!myIdx) {
-            nvshmemi_proxy_put_signal_nbi(rptr, lptr, bytes, pe, NVSHMEMI_OP_PUT_SIGNAL, sig_addr,
-                                          signal, sig_op);
-            if (is_nbi == 0) {
-                nvshmemi_proxy_quiet(false);
-                if (SCOPE == nvshmemi_threadgroup_thread)
-                    __threadfence_block(); /* to prevent reuse of src buffer before quiet completion
-                                        for warp/block scope, following sync op will accomplish that
-                                      */
-            }
+#ifdef NVSHMEM_EFAGDA_SUPPORT
+    if (nvshmemi_device_state_d.efagda_is_initialized) {
+        nvshmemi_efagda_put_signal<SCOPE>(rptr, lptr, bytes, sig_addr, signal, sig_op, pe, is_nbi);
+        return;
+    }
+#endif
+    int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
+    if (!myIdx) {
+        nvshmemi_proxy_put_signal_nbi(rptr, lptr, bytes, pe, NVSHMEMI_OP_PUT_SIGNAL, sig_addr,
+                                      signal, sig_op);
+        if (is_nbi == 0) {
+            nvshmemi_proxy_quiet(false);
+            if (SCOPE == nvshmemi_threadgroup_thread)
+                __threadfence_block(); /* to prevent reuse of src buffer before quiet completion
+                                    for warp/block scope, following sync op will accomplish that
+                                  */
         }
     }
 }
@@ -176,12 +198,17 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
 #ifdef NVSHMEM_IBGDA_SUPPORT
     if (nvshmemi_device_state_d.ibgda_is_initialized) {
         nvshmemi_ibgda_rma_nbi<SCOPE, channel_op>(rptr, lptr, bytes, pe);
-    } else
-#endif
-    {
-        int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
-        if (!myIdx) nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, channel_op);
+        return;
     }
+#endif
+#ifdef NVSHMEM_EFAGDA_SUPPORT
+    if (nvshmemi_device_state_d.efagda_is_initialized) {
+        nvshmemi_efagda_rma_nbi<SCOPE, channel_op>(rptr, lptr, bytes, pe);
+        return;
+    }
+#endif
+    int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
+    if (!myIdx) nvshmemi_proxy_rma_nbi(rptr, lptr, bytes, pe, channel_op);
 }
 
 #define TRANSFER_DECL_RMA_NBI(SCOPE)                                            \
@@ -247,9 +274,23 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
                 __threadfence_system();
             }
         }
-    } else
+        nvshmemi_threadgroup_sync<SCOPE>();
+        return;
+    }
 #endif
-        if (nvshmemi_device_state_d.proxy == NVSHMEMI_PROXY_FULL) {
+#ifdef NVSHMEM_EFAGDA_SUPPORT
+    if (nvshmemi_device_state_d.efagda_is_initialized) {
+        nvshmemi_efagda_quiet<SCOPE>();
+        if (use_membar) {
+            if (!myIdx) {
+                __threadfence_system();
+            }
+        }
+        nvshmemi_threadgroup_sync<SCOPE>();
+        // EFAGDA requires fall-through to proxy quiet
+    }
+#endif
+    if (nvshmemi_device_state_d.proxy == NVSHMEMI_PROXY_FULL) {
         if (!myIdx) {
             nvshmemi_proxy_quiet(use_membar);
         }
@@ -268,10 +309,19 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
 #ifdef NVSHMEM_IBGDA_SUPPORT
     if (nvshmemi_device_state_d.ibgda_is_initialized) {
         nvshmemi_ibgda_fence<SCOPE>();
-    } else
+        nvshmemi_threadgroup_sync<SCOPE>();
+        return;
+    }
 #endif
-        if ((nvshmemi_device_state_d.proxy == NVSHMEMI_PROXY_FULL) &&
-            !nvshmemi_device_state_d.proxy_ops_are_ordered) {
+#ifdef NVSHMEM_EFAGDA_SUPPORT
+    if (nvshmemi_device_state_d.efagda_is_initialized) {
+        nvshmemi_efagda_quiet<SCOPE>();
+        nvshmemi_threadgroup_sync<SCOPE>();
+        // EFAGDA requires fall-through to proxy fence
+    }
+#endif
+    if ((nvshmemi_device_state_d.proxy == NVSHMEMI_PROXY_FULL) &&
+        !nvshmemi_device_state_d.proxy_ops_are_ordered) {
         int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
         if (!myIdx) {
             nvshmemi_proxy_fence();
@@ -290,11 +340,16 @@ nvshmemi_transfer_enforce_consistency_at_target(bool use_membar) {
 #ifdef NVSHMEM_IBGDA_SUPPORT
     if (nvshmemi_device_state_d.ibgda_is_initialized) {
         nvshmemi_ibgda_enforce_consistency_at_target(use_membar);
-    } else
-#endif
-    {
-        nvshmemi_proxy_enforce_consistency_at_target(use_membar);
+        return;
     }
+#endif
+//#ifdef NVSHMEM_EFAGDA_SUPPORT
+//    if (nvshmemi_device_state_d.efagda_is_initialized) {
+//        nvshmemi_efagda_enforce_consistency_at_target(use_membar);
+//        return;
+//    }
+//#endif
+    nvshmemi_proxy_enforce_consistency_at_target(use_membar);
 }
 #endif /* __CUDA_ARCH__ */
 

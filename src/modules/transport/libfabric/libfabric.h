@@ -17,6 +17,8 @@
 
 #include "non_abi/nvshmem_build_options.h"
 #include "device_host_transport/nvshmem_common_transport.h"
+#include "internal/host_transport/transport.h"
+#include "internal/host_transport/cudawrap.h"
 
 #ifdef NVSHMEM_USE_GDRCOPY
 #include "gdrapi.h"
@@ -260,3 +262,19 @@ struct nvshmemt_libfabric_gdr_op_ctx {
     struct fi_context2 ofi_context;
     fi_addr_t src_addr;
 };
+
+int nvshmemt_libfabric_init(nvshmem_transport_t *t, struct nvshmemi_cuda_fn_table *table, int api_version);
+int nvshmemt_libfabric_can_reach_peer(int *access,
+                                      struct nvshmem_transport_pe_info *peer_info,
+                                      nvshmem_transport_t t);
+int nvshmemt_libfabric_connect_endpoints(nvshmem_transport_t t, int *selected_dev_ids,
+                                         int num_selected_devs);
+int nvshmemt_libfabric_finalize(nvshmem_transport_t transport);
+int nvshmemt_libfabric_get_mem_handle(nvshmem_mem_handle_t *mem_handle, void *buf,
+                                      size_t length, nvshmem_transport_t t,
+                                      bool local_only);
+int nvshmemt_libfabric_release_mem_handle(nvshmem_mem_handle_t *mem_handle,
+                                          nvshmem_transport_t t);
+int nvshmemt_libfabric_enforce_cst(struct nvshmem_transport *tcurr);
+int nvshmemt_libfabric_quiet(struct nvshmem_transport *tcurr, int pe, int is_proxy);
+int nvshmemt_libfabric_progress(nvshmem_transport_t transport, int is_proxy);

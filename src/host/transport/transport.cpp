@@ -26,16 +26,26 @@
 #include "non_abi/nvshmem_version.h"                                       // for NVSHMEM_TRANS...
 #include "topo.h"                                                          // for nvshmemi_get_...
 
+/* For transport state initialization */
+#ifdef NVSHMEM_IBGDA_SUPPORT
+#include "device_host_transport/nvshmem_common_ibgda.h"
+#endif
+
+#ifdef NVSHMEM_EFAGDA_SUPPORT
+#include "device_host_transport/nvshmem_common_efagda.h"
+#endif
+
 #define TRANSPORT_STRING_MAX_LENGTH 8
 #define NVSHMEM_TRANSPORT_COUNT 6
 #define IB_TRANSPORT_STRING "ibrc"
 #define UCX_TRANSPORT_STRING "ucx"
 #define DEVX_TRANSPORT_STRING "ibdevx"
 #define LIBFABRIC_TRANSPORT_STRING "libfabric"
+#define EFAGDA_TRANSPORT_STRING "efagda"
 
 static void *transport_lib = NULL;
-#ifdef NVSHMEM_IBGDA_SUPPORT
-static void *transport_lib_IBGDA = NULL;
+#if defined(NVSHMEM_IBGDA_SUPPORT) || defined(NVSHMEM_EFAGDA_SUPPORT)
+static void *transport_lib_DEVICE = NULL;
 #endif
 
 int nvshmemi_transport_show_info(nvshmemi_state_t *state) {
@@ -148,6 +158,26 @@ int nvshmemi_transport_init(nvshmemi_state_t *state) {
     }
 #endif
 
+/* Is it the case that EFAGDA and libfabric cannot be used together? Does EFAGDA support the proxied ops?*/
+#ifdef NVSHMEM_EFAGDA_SUPPORT
+    transport_skipped = strncasecmp(nvshmemi_options.REMOTE_TRANSPORT, EFAGDA_TRANSPORT_STRING,
+                                    TRANSPORT_STRING_MAX_LENGTH);
+    if (transport_skipped) {
+        INFO(NVSHMEM_INIT, "Efagda transport skipped in favor of: %s\n",
+             nvshmemi_options.REMOTE_TRANSPORT);
+    } else {
+        status =
+            snprintf(transport_object_file, transport_object_file_len,
+                     "nvshmem_transport_efagda.so.%d", NVSHMEM_TRANSPORT_PLUGIN_MAJOR_VERSION);
+        if (status > 0 && status < transport_object_file_len) {
+            transport_selected = true;
+            goto transport_init;
+        } else {
+            NVSHMEMI_ERROR_PRINT("snprintf call failed in the transport.\n");
+        }
+    }
+#endif
+
 #ifdef NVSHMEM_LIBFABRIC_SUPPORT
     transport_skipped = strncasecmp(nvshmemi_options.REMOTE_TRANSPORT, LIBFABRIC_TRANSPORT_STRING,
                                     TRANSPORT_STRING_MAX_LENGTH);
@@ -214,6 +244,14 @@ transport_init:
         transports[index]->cache_handle = (void *)tmp_cache_ptr;
         transports[index]->alias_va_map = state->heap_obj->get_alias_va_map();
         transports[index]->egm_map = state->heap_obj->get_egm_map();
+
+#ifdef NVSHMEM_EFAGDA_SUPPORT
+        if (strncasecmp(nvshmemi_options.REMOTE_TRANSPORT, "efagda", 6) == 0) {
+            nvshmemi_get_device_transport_state(&transports[index]->type_specific_shared_state);
+            nvshmemi_init_efagda_device_state((*((nvshmemi_efagda_device_state_t *)transports[index]->type_specific_shared_state)));
+        }
+#endif
+
         if (transports[index]->max_op_len == 0) transports[index]->max_op_len = SIZE_MAX;
         state->atomic_host_endian_min_size = transports[index]->atomic_host_endian_min_size;
         index++;
@@ -235,16 +273,16 @@ transport_fail:
             WARN("Unable to open the %s transport. %s\n", transport_object_file, dlerror());
             goto out;
         }
-        transport_lib_IBGDA = dlopen(transport_object_file, RTLD_NOW);
-        if (transport_lib_IBGDA == NULL) {
+        transport_lib_DEVICE = dlopen(transport_object_file, RTLD_NOW);
+        if (transport_lib_DEVICE == NULL) {
             WARN("Unable to open the %s transport. %s\n", transport_object_file, dlerror());
             goto out;
         }
 
-        init_fn = (nvshmemi_transport_init_fn)dlsym(transport_lib_IBGDA, "nvshmemt_init");
+        init_fn = (nvshmemi_transport_init_fn)dlsym(transport_lib_DEVICE, "nvshmemt_init");
         if (!init_fn) {
-            dlclose(transport_lib_IBGDA);
-            transport_lib_IBGDA = NULL;
+            dlclose(transport_lib_DEVICE);
+            transport_lib_DEVICE = NULL;
             WARN("Unable to get info from %s transport.\n", transport_object_file);
             goto out;
         }
@@ -273,7 +311,8 @@ transport_fail:
             transports[index]->cache_handle = (void *)tmp_cache_ptr;
             transports[index]->alias_va_map = state->heap_obj->get_alias_va_map();
             transports[index]->egm_map = state->heap_obj->get_egm_map();
-            nvshmemi_ibgda_get_device_state(&transports[index]->type_specific_shared_state);
+            nvshmemi_get_device_transport_state(&transports[index]->type_specific_shared_state);
+            nvshmemi_init_ibgda_device_state((*((nvshmemi_ibgda_device_state_t *)transports[index]->type_specific_shared_state)));
             if (transports[index]->max_op_len == 0) transports[index]->max_op_len = SIZE_MAX;
             state->atomic_host_endian_min_size = transports[index]->atomic_host_endian_min_size;
             nvshmemi_device_state.ibgda_is_initialized = true;
@@ -281,8 +320,8 @@ transport_fail:
         } else {
             NVSHMEMI_ERROR_PRINT("init failed for transport: IBGDA");
             nvshmemi_local_mem_cache_fini(tmp_cache_ptr);
-            dlclose(transport_lib_IBGDA);
-            transport_lib_IBGDA = NULL;
+            dlclose(transport_lib_DEVICE);
+            transport_lib_DEVICE = NULL;
             status = 0;
         }
     } else {
@@ -307,7 +346,7 @@ out:
                  nvshmemi_options.REMOTE_TRANSPORT);
         }
 #ifdef NVSHMEM_IBGDA_SUPPORT
-        if (transport_lib_IBGDA) {
+        if (transport_lib_DEVICE) {
             INFO(NVSHMEM_INIT,
                  "Successfully initialized the transport: IBGDA. It will be used for device-side "
                  "APIs over IB.",
@@ -352,9 +391,9 @@ out:
     }
 
 #ifdef NVSHMEM_IBGDA_SUPPORT
-    if (transport_lib_IBGDA) {
-        dlclose(transport_lib_IBGDA);
-        transport_lib_IBGDA = NULL;
+    if (transport_lib_DEVICE) {
+        dlclose(transport_lib_DEVICE);
+        transport_lib_DEVICE = NULL;
     }
 #endif
     return status;
@@ -418,6 +457,16 @@ int nvshmemi_setup_connections(nvshmemi_state_t *state) {
 
         status = tcurr->host_ops.connect_endpoints(tcurr, selected_devices, found_devices);
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "connect EPS failed \n");
+
+#ifdef NVSHMEM_EFAGDA_SUPPORT
+        if (strncasecmp(nvshmemi_options.REMOTE_TRANSPORT, "efagda", 6) == 0) {
+            nvshmemi_device_state.efagda_is_initialized = true;
+            /* This seems unnecessary, given the call at the end of this function. */
+            status = nvshmemi_update_device_state();
+            NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "device state update failed \n");
+        }
+#endif
+
         status = nvshmemi_boot_handle.barrier(&nvshmemi_boot_handle);
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "barrier failed \n");
 
