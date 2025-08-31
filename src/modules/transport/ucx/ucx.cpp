@@ -52,7 +52,7 @@ static uint64_t nvshmemt_g_bogus_bounce_buffer = 0;
 static bool use_gdrcopy = 0;
 static bool use_local_atomics = 0;
 
-int nvshmemt_ucx_progress(nvshmem_transport_t transport);
+int nvshmemt_ucx_progress(nvshmem_transport_t transport, int is_proxy);
 
 static nvshmemt_ucx_mem_handle_info_t *get_mem_handle_info(nvshmem_transport_t transport,
                                                            transport_ucx_state_t *ucx_state,

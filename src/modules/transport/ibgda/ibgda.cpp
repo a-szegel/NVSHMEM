@@ -407,7 +407,7 @@ static size_t ibgda_get_host_page_size() {
 }
 
 #ifdef NVSHMEM_USE_GDRCOPY
-int nvshmemt_ibgda_progress(nvshmem_transport_t t) {
+int nvshmemt_ibgda_progress(nvshmem_transport_t t, int is_proxy) {
     nvshmemt_ibgda_state_t *ibgda_state = (nvshmemt_ibgda_state_t *)t->state;
     int n_devs_selected = ibgda_state->n_devs_selected;
     int n_pes = t->n_pes;
