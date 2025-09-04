@@ -141,14 +141,8 @@ static int nvshmemt_efagda_can_reach_peer(int *access,
                                           struct nvshmem_transport_pe_info *peer_info,
                                           nvshmem_transport_t t) {
     int status = 0;
-
-    status = nvshmemt_libfabric_can_reach_peer(access, peer_info, t);
-    if (status) return status;
-
-    // TODO Do we want to include READ?
-
-    *access |=  NVSHMEM_TRANSPORT_CAP_GPU_WRITE | NVSHMEM_TRANSPORT_CAP_GPU_READ;
-
+    // TODO Switch to GPU read when implemented
+    *access = NVSHMEM_TRANSPORT_CAP_GPU_WRITE | NVSHMEM_TRANSPORT_CAP_CPU_READ | NVSHMEM_TRANSPORT_CAP_CPU_ATOMICS;
     return status;
 }
 

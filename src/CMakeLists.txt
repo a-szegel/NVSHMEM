@@ -572,7 +572,7 @@ if(NVSHMEM_EFAGDA_SUPPORT)
                              modules/transport/libfabric/
                              "${LIBFABRIC_HOME}/include/"
   )
-  target_link_libraries(nvshmem_transport_efagda PRIVATE ${FABRIC_lib} CUDA::cudart_static)
+  target_link_libraries(nvshmem_transport_efagda PRIVATE ${FABRIC_lib} CUDA::cudart_static CUDA::cuda_driver)
   if(NVSHMEM_USE_GDRCOPY)
     target_include_directories(nvshmem_transport_efagda PRIVATE ${GDRCOPY_INCLUDE})
     target_sources(nvshmem_transport_efagda PRIVATE
