@@ -19,6 +19,7 @@
 #include "device_host_transport/nvshmem_common_transport.h"
 #include "internal/host_transport/transport.h"
 #include "internal/host_transport/cudawrap.h"
+#include "non_abi/device/pt-to-pt/libfabric_efagda_common.h"
 
 #ifdef NVSHMEM_USE_GDRCOPY
 #include "gdrapi.h"
@@ -70,7 +71,7 @@ typedef struct {
     struct fid_cntr *counter;
     uint64_t submitted_ops;
     uint64_t completed_staged_atomics;
-    uint32_t proxy_put_signal_seq_counter;
+    nvshmemt_libfabric_endpoint_seq_counter_t put_signal_seq_counter;
     std::unordered_map<uint64_t, std::pair<nvshmemt_libfabric_gdr_op_ctx_t *, int>>
         *proxy_put_signal_comp_map;
 } nvshmemt_libfabric_endpoint_t;
@@ -86,11 +87,6 @@ typedef enum {
     NVSHMEMT_LIBFABRIC_CONTEXT_SEND_AMO,
     NVSHMEMT_LIBFABRIC_CONTEXT_RECV_AMO
 } nvshemmt_libfabric_context_t;
-
-typedef enum {
-    NVSHMEMT_LIBFABRIC_IMM_PUT_SIGNAL_SEQ = 0,
-    NVSHMEMT_LIBFABRIC_IMM_STAGED_ATOMIC_ACK,
-} nvshmemt_libfabric_imm_cq_data_hdr_t;
 
 class threadSafeOpQueue {
    private:

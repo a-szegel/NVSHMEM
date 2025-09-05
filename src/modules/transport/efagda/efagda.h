@@ -7,6 +7,7 @@
 #include "libfabric.h"
 #include <vector>
 #include "device_host_transport/nvshmem_common_efagda.h"
+#include "non_abi/device/pt-to-pt/libfabric_efagda_common.h"
 
 // EFA GDA specific memory handle (following IBGDA pattern)
 typedef struct {
@@ -36,5 +37,5 @@ typedef struct {
     nvshmemi_efagda_device_key_t *device_lkeys_d;
     nvshmemi_efagda_device_key_t *device_rkeys_d;
 
-    uint32_t *put_signal_seq_counter;
+    nvshmemt_libfabric_endpoint_seq_counter_t *put_signal_seq_counter;
 } nvshmemt_efagda_state_t;

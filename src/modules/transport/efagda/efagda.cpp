@@ -517,7 +517,6 @@ static int nvshmemt_efagda_populate_device_state(nvshmem_transport_t t) {
     int status = 0;
     nvshmemt_efagda_state_t *efagda_state = (nvshmemt_efagda_state_t *)t->state;
     nvshmemi_efagda_device_state_t *device_state = (nvshmemi_efagda_device_state_t *)t->type_specific_shared_state;
-    uint32_t initial_value = 0;
 
     if (!device_state) {
         NVSHMEMI_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "type_specific_shared_state is NULL\n");
@@ -533,11 +532,11 @@ static int nvshmemt_efagda_populate_device_state(nvshmem_transport_t t) {
     device_state->cuda_ah = efagda_state->cuda_ah;
 
 
-    status = cudaMalloc(&efagda_state->put_signal_seq_counter, sizeof(uint32_t));
+    status = cudaMalloc(&efagda_state->put_signal_seq_counter, sizeof(nvshmemt_libfabric_endpoint_seq_counter_t));
     NVSHMEMI_NE_ERROR_JMP(status, cudaSuccess, NVSHMEMX_ERROR_OUT_OF_MEMORY, out, "cudaMalloc for put_signal_seq_counter failed.\n");
 
-    status = cudaMemcpy(efagda_state->put_signal_seq_counter, &initial_value, sizeof(uint32_t), cudaMemcpyHostToDevice);
-    NVSHMEMI_NE_ERROR_JMP(status, cudaSuccess, NVSHMEMX_ERROR_INTERNAL, out, "cudaMemcpy for put_signal_seq_counter initialization failed.\n");
+    status = cudaMemset(efagda_state->put_signal_seq_counter, 0, sizeof(nvshmemt_libfabric_endpoint_seq_counter_t));
+    NVSHMEMI_NE_ERROR_JMP(status, cudaSuccess, NVSHMEMX_ERROR_INTERNAL, out, "cudaMemset for put_signal_seq_counter initialization failed.\n");
     device_state->put_signal_seq_counter = efagda_state->put_signal_seq_counter;
 
     // Allocate tx lock in device memory
