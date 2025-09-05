@@ -22,6 +22,7 @@
 
 #include "device_host/nvshmem_types.h"
 #include "non_abi/device/pt-to-pt/efa_io_defs.h"
+#include "non_abi/device/pt-to-pt/libfabric_efagda_common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -119,7 +120,7 @@ typedef struct {
     int log2_cumem_granularity;
     uint32_t n_pes;
     uint32_t my_pe;
-    uint32_t *put_signal_seq_counter;
+    nvshmemt_libfabric_endpoint_seq_counter_t *put_signal_seq_counter;
     struct efa_qp *cuda_qp;
     struct efa_cq *cuda_cq;
     struct cuda_ah_info *cuda_ah;

@@ -1014,14 +1014,10 @@ int nvshmemt_put_signal_unordered(struct nvshmem_transport *tcurr, int pe, rma_v
 
     /* Get sequence number for this put-signal, with retry */
     uint64_t num_retries = 0;
+    sequence_count = ep.put_signal_seq_counter.next_seq_num();
     do {
-        int32_t seq_num = ep.put_signal_seq_counter.next_seq_num();
-        if (seq_num < 0) {
-            status = -EAGAIN;
-        } else {
-            sequence_count = seq_num;
-            status = 0;
-        }
+        bool acquired = ep.put_signal_seq_counter.acquire_seq_num(sequence_count);
+        status = (acquired ? 0 : -EAGAIN);
     } while (try_again(tcurr, &status, &num_retries, is_proxy));
 
     if (unlikely(status)) {
