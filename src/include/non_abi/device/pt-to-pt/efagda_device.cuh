@@ -21,6 +21,10 @@
 #include "device_host/nvshmem_types.h"
 #include "non_abi/nvshmem_build_options.h"
 
+#define EFAGDA_MAX_TRANSFER_SIZE (1ULL << 30)
+#define NVSHMEMI_MIN(x, y) ((x) < (y) ? (x) : (y))
+#define NVSHMEMI_MAX(x, y) ((x) > (y) ? (x) : (y))
+
 // TODO REMOVE
 // #define __CUDA_ARCH__ 1
 
@@ -445,6 +449,12 @@ __device__ nvshmemi_efagda_device_state_t *efagda_get_device_transport_state() {
     return (nvshmemi_efagda_device_state_t *)&nvshmemi_device_transport_state_d;
 }
 
+__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE size_t
+efagda_cal_transfer_size(size_t req_size, size_t lchunk_size, size_t rchunk_size) {
+    return NVSHMEMI_MIN(EFAGDA_MAX_TRANSFER_SIZE,
+                        NVSHMEMI_MIN(req_size, NVSHMEMI_MIN(rchunk_size, lchunk_size)));
+}
+
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_get_lkey(
     uint64_t addr, uint32_t *out_lkey, size_t *out_chunk_size) {
     nvshmemi_efagda_device_state_t *state = efagda_get_device_transport_state();
@@ -458,10 +468,12 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_get_lkey(
         nvshmemi_efagda_device_key_t device_key = state->lkeys[idx];
         *out_lkey = device_key.key;
         *out_chunk_size = device_key.next_addr - loffset;
-    } else {
-        *out_lkey = 0;
-        *out_chunk_size = 4096;
+        return;
     }
+
+    printf("EFA GDA: pe=%d efagda_get_lkey out of bounds - idx=%lu, max=%lu\n",
+           state->my_pe, idx, (nvshmemi_device_state_d.heap_size >> log2_granularity));
+    assert(0);
 }
 
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_get_raddr_rkey(
@@ -482,13 +494,13 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_get_raddr_rkey(
         *out_raddr = raddr;
         *out_rkey = device_key.key;
         *out_chunk_size = device_key.next_addr - roffset;
-    } else {
-        printf("EFA GDA: pe=%d efagda_get_raddr_rkey out of bounds - idx=%lu, max=%lu\n",
-               state->my_pe, idx, (nvshmemi_device_state_d.heap_size >> log2_granularity) * npes);
-        *out_raddr = raddr;
-        *out_rkey = 0;
-        *out_chunk_size = 4096;
+        return;
     }
+
+    printf("EFA GDA: pe=%d efagda_get_raddr_rkey out of bounds - idx=%lu, max=%lu\n",
+            state->my_pe, idx, (nvshmemi_device_state_d.heap_size >> log2_granularity) * npes);
+    assert(0);
+
 }
 
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_get_ah_info(
@@ -530,9 +542,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_rma_nbi(void *rptr
             size_t rchunk_size;
             efagda_get_raddr_rkey(raddr_base, dst_pe, &raddr, &rkey, &rchunk_size);
 
-            size_t transfer_size = remaining_size;
-            if (lchunk_size > 0 && transfer_size > lchunk_size) transfer_size = lchunk_size;
-            if (rchunk_size > 0 && transfer_size > rchunk_size) transfer_size = rchunk_size;
+            size_t transfer_size = efagda_cal_transfer_size(remaining_size, lchunk_size, rchunk_size);
 
             efagda_init_rdma_write_wr(qp, 0, rkey, raddr);
             efagda_wr_set_remote_addr(qp, ah, remote_qpn, remote_qkey);
@@ -597,6 +607,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_put_signal(
         size_t remaining_size = bytes;
         uint64_t laddr = (uint64_t)lptr;
         uint64_t raddr_base = (uint64_t)rptr;
+        int num_writes = 0;
 
         while (remaining_size > 0) {
             uint32_t lkey;
@@ -608,9 +619,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_put_signal(
             size_t rchunk_size;
             efagda_get_raddr_rkey(raddr_base, pe, &raddr, &rkey, &rchunk_size);
 
-            size_t transfer_size = remaining_size;
-            if (lchunk_size > 0 && transfer_size > lchunk_size) transfer_size = lchunk_size;
-            if (rchunk_size > 0 && transfer_size > rchunk_size) transfer_size = rchunk_size;
+            size_t transfer_size = efagda_cal_transfer_size(remaining_size, lchunk_size, rchunk_size);
 
             efagda_init_rdma_write_imm_wr(qp, 0, rkey, raddr, imm_data);
             efagda_wr_set_remote_addr(qp, ah, remote_qpn, remote_qkey);
@@ -620,6 +629,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_put_signal(
             laddr += transfer_size;
             raddr_base += transfer_size;
             remaining_size -= transfer_size;
+            num_writes++;
         }
 
         uint32_t sig_rkey;
@@ -635,7 +645,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_put_signal(
         signal_op.sequence_count = imm_data;
         signal_op.target_addr = (void*)sig_raddr;
         signal_op.sig_val = signal;
-        signal_op.num_writes = 1;
+        signal_op.num_writes = num_writes;
         signal_op.src_pe = state->my_pe;
 
         // printf("[PE %d] efagda_put_signal: sending signal - type=%d, op=%d, seq=%u, target=%p, val=%lu, src_pe=%d\n",
