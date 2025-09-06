@@ -87,12 +87,6 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
         return;
     }
 #endif
-//#ifdef NVSHMEM_EFAGDA_SUPPORT
-//    if (nvshmemi_device_state_d.efagda_is_initialized) {
-//        nvshmemi_efagda_rma_p<T>(rptr, value, pe);
-//        return;
-//    }
-//#endif
     nvshmemi_proxy_rma_p<T>(rptr, value, pe);
 }
 
@@ -109,11 +103,6 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE T nvshmemi_transfer
         return nvshmemi_ibgda_rma_g<T>(rptr, pe);
     }
 #endif
-//#ifdef NVSHMEM_EFAGDA_SUPPORT
-//    if (nvshmemi_device_state_d.efagda_is_initialized) {
-//        return nvshmemi_efagda_rma_g<T>(rptr, pe);
-//    }
-//#endif
     return nvshmemi_proxy_rma_g<T>(rptr, pe);
 }
 
@@ -133,8 +122,10 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
 #endif
 #ifdef NVSHMEM_EFAGDA_SUPPORT
     if (nvshmemi_device_state_d.efagda_is_initialized) {
-        nvshmemi_efagda_rma<SCOPE, channel_op>(rptr, lptr, bytes, pe);
-        return;
+        if (channel_op != NVSHMEMI_OP_GET) {
+            nvshmemi_efagda_rma<SCOPE, channel_op>(rptr, lptr, bytes, pe);
+            return;
+        }
     }
 #endif
     int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
@@ -203,8 +194,10 @@ NVSHMEMI_TRANSFER_STATIC __device__ NVSHMEMI_TRANSFER_INLINE void nvshmemi_trans
 #endif
 #ifdef NVSHMEM_EFAGDA_SUPPORT
     if (nvshmemi_device_state_d.efagda_is_initialized) {
-        nvshmemi_efagda_rma_nbi<SCOPE, channel_op>(rptr, lptr, bytes, pe);
-        return;
+        if (channel_op != NVSHMEMI_OP_GET) {
+            nvshmemi_efagda_rma_nbi<SCOPE, channel_op>(rptr, lptr, bytes, pe);
+            return;
+        }
     }
 #endif
     int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
@@ -343,6 +336,9 @@ nvshmemi_transfer_enforce_consistency_at_target(bool use_membar) {
         return;
     }
 #endif
+
+// TODO FIXME
+
 //#ifdef NVSHMEM_EFAGDA_SUPPORT
 //    if (nvshmemi_device_state_d.efagda_is_initialized) {
 //        nvshmemi_efagda_enforce_consistency_at_target(use_membar);
