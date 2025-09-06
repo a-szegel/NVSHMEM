@@ -518,7 +518,8 @@ template <threadgroup_t SCOPE, nvshmemi_op_t channel_op>
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_rma_nbi(void *rptr, void *lptr,
                                                                       size_t bytes, int dst_pe) {
     nvshmemi_threadgroup_sync<SCOPE>();
-    if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
+    int my_tid = nvshmemi_thread_id_in_threadgroup<NVSHMEMI_THREADGROUP_WARP>();
+    if (my_tid == 0) {
         nvshmemi_efagda_device_state_t *state = efagda_get_device_transport_state();
 
         struct efa_qp *qp = state->cuda_qp;
@@ -563,7 +564,8 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_rma_nbi(void *rptr
 template <threadgroup_t SCOPE>
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_quiet() {
     nvshmemi_threadgroup_sync<SCOPE>();
-    if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
+    int my_tid = nvshmemi_thread_id_in_threadgroup<NVSHMEMI_THREADGROUP_WARP>();
+    if (my_tid == 0) {
         nvshmemi_efagda_device_state_t *state = efagda_get_device_transport_state();
         int result;
         ibv_wc wc;
@@ -588,7 +590,8 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_put_signal(
     void *rptr, void *lptr, size_t bytes, void *sig_rptr, uint64_t signal, nvshmemi_amo_t sig_op,
     int pe, bool is_nbi) {
     nvshmemi_threadgroup_sync<SCOPE>();
-    if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
+    int my_tid = nvshmemi_thread_id_in_threadgroup<NVSHMEMI_THREADGROUP_WARP>();
+    if (my_tid == 0) {
         nvshmemi_efagda_device_state_t *state = efagda_get_device_transport_state();
         struct efa_qp *qp = state->cuda_qp;
 
