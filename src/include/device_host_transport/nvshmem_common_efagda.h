@@ -42,7 +42,6 @@ enum efagda_wc_opcode {
 struct efa_cq {
 	uint16_t cq_idx;
 	uint8_t *buf;
-	struct efa_io_cdesc_common *cur_cqe;
 	uint32_t entry_size;
 	uint32_t num_entries;
 	uint32_t queue_mask;

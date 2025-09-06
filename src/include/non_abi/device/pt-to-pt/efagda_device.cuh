@@ -75,38 +75,39 @@ __device__ efa_io_cdesc_common* efa_get_cqe(efa_cq* cq, int entry) {
 }
 
 __device__ efa_io_cdesc_common* cq_next_cqe_get(efa_cq* cq) {
-    uint32_t current_index = efa_cq_get_current_index(cq);
+    uint32_t old_consumed_cnt = cq->consumed_cnt;
+    uint32_t current_index = old_consumed_cnt & cq->queue_mask;
     efa_io_cdesc_common* cqe = efa_get_cqe(cq, current_index);
 
     if (efa_cqe_is_pending(cqe, cq->phase)) {
-        __threadfence_system();
+        uint32_t claimed_cnt = atomicCAS(&cq->consumed_cnt, old_consumed_cnt, old_consumed_cnt + 1);
+        if (claimed_cnt == old_consumed_cnt) {
+            __threadfence_system();
 
-        atomicAdd(&cq->consumed_cnt, 1);
-        if (!efa_cq_get_current_index(cq)) {
-            cq->phase = 1 - cq->phase;
+            if (!((old_consumed_cnt + 1) & cq->queue_mask)) {
+                atomicXor(&cq->phase, 1); // atomic phase flip
+            }
+            return cqe;
         }
-        return cqe;
     }
 
     return nullptr;
 }
 
-__device__ int efagda_cq_poll_next(efa_cq* cq) {
+__device__ int efagda_cq_poll_next(efa_cq* cq, efa_io_cdesc_common** out_cqe) {
     efa_io_cdesc_common* cqe = cq_next_cqe_get(cq);
     if (!cqe) {
         return 0;
     }
 
-    cq->cur_cqe = cqe;
+    *out_cqe = cqe;
     return 1;
 }
 
-__device__ enum efagda_wc_opcode efagda_wc_read_opcode(efa_cq* cq)
+__device__ enum efagda_wc_opcode efagda_wc_read_opcode(efa_io_cdesc_common* cqe)
 {
 	enum efa_io_send_op_type op_type;
-	struct efa_io_cdesc_common *cqe;
 
-	cqe = cq->cur_cqe;
 	op_type = (enum efa_io_send_op_type)EFA_GET(&cqe->flags, EFA_IO_CDESC_COMMON_OP_TYPE);
 
 	if (EFA_GET(&cqe->flags, EFA_IO_CDESC_COMMON_Q_TYPE) == EFA_IO_SEND_QUEUE) {
@@ -125,74 +126,72 @@ __device__ enum efagda_wc_opcode efagda_wc_read_opcode(efa_cq* cq)
 	return EFAGDA_WC_RECV;
 }
 
-__device__ bool efa_wc_is_unsolicited(efa_cq* cq)
+__device__ bool efa_wc_is_unsolicited(efa_io_cdesc_common* cqe)
 {
-	return EFA_GET(&cq->cur_cqe->flags, EFA_IO_CDESC_COMMON_UNSOLICITED);
+	return EFA_GET(&cqe->flags, EFA_IO_CDESC_COMMON_UNSOLICITED);
 }
 
-__device__ uint16_t efagda_wc_read_req_id(efa_cq* cq)
+__device__ uint16_t efagda_wc_read_req_id(efa_io_cdesc_common* cqe)
 {
-	return cq->cur_cqe->req_id;
+	return cqe->req_id;
 }
 
-__device__ uint32_t efagda_wc_read_vendor_err(efa_cq* cq)
+__device__ uint32_t efagda_wc_read_vendor_err(efa_io_cdesc_common* cqe)
 {
-	return cq->cur_cqe->status;
+	return cqe->status;
 }
 
-__device__ bool efagda_wc_has_imm(efa_cq* cq)
+__device__ bool efagda_wc_has_imm(efa_io_cdesc_common* cqe)
 {
-	return EFA_GET(&cq->cur_cqe->flags, EFA_IO_CDESC_COMMON_HAS_IMM);
+	return EFA_GET(&cqe->flags, EFA_IO_CDESC_COMMON_HAS_IMM);
 }
 
-__device__ uint32_t efagda_wc_read_imm_data(efa_cq* cq)
+__device__ uint32_t efagda_wc_read_imm_data(efa_io_cdesc_common* cqe)
 {
 	struct efa_io_rx_cdesc *rcqe;
 
-	rcqe = container_of(cq->cur_cqe, struct efa_io_rx_cdesc, common);
+	rcqe = container_of(cqe, struct efa_io_rx_cdesc, common);
 
 	return rcqe->imm;
 }
 
-__device__ uint32_t efagda_wc_read_byte_len(efa_cq* cq)
+__device__ uint32_t efagda_wc_read_byte_len(efa_io_cdesc_common* cqe)
 {
-	struct efa_io_cdesc_common *cqe;
+	struct efa_io_cdesc_common *cqe_ptr = cqe;
 	struct efa_io_rx_cdesc_ex *rcqe;
 	uint32_t length;
 
-	cqe = cq->cur_cqe;
-
-	if (EFA_GET(&cqe->flags, EFA_IO_CDESC_COMMON_Q_TYPE) != EFA_IO_RECV_QUEUE)
+	if (EFA_GET(&cqe_ptr->flags, EFA_IO_CDESC_COMMON_Q_TYPE) != EFA_IO_RECV_QUEUE)
 		return 0;
 
-	rcqe = container_of(cqe, struct efa_io_rx_cdesc_ex, base.common);
+	rcqe = container_of(cqe_ptr, struct efa_io_rx_cdesc_ex, base.common);
 
 	length = rcqe->base.length;
-	if (EFA_GET(&cqe->flags, EFA_IO_CDESC_COMMON_OP_TYPE) == EFA_IO_RDMA_WRITE)
+	if (EFA_GET(&cqe_ptr->flags, EFA_IO_CDESC_COMMON_OP_TYPE) == EFA_IO_RDMA_WRITE)
 		length |= ((uint32_t)rcqe->u.rdma_write.length_hi << 16);
 
 	return length;
 }
 
-__device__ uint32_t efagda_wc_read_qp_num(efa_cq *cq)
+__device__ uint32_t efagda_wc_read_qp_num(efa_io_cdesc_common* cqe)
 {
-	return cq->cur_cqe->qp_num;
+	return cqe->qp_num;
 }
 
-__device__ uint32_t efagda_wc_read_src_qp(efa_cq *cq)
+__device__ uint32_t efagda_wc_read_src_qp(efa_io_cdesc_common* cqe)
 {
 	struct efa_io_rx_cdesc *rcqe;
 
-	rcqe = container_of(cq->cur_cqe, struct efa_io_rx_cdesc, common);
+	rcqe = container_of(cqe, struct efa_io_rx_cdesc, common);
 
 	return rcqe->src_qp_num;
 }
 
-__device__ uint32_t efagda_wc_read_slid(efa_cq *cq)
+__device__ uint32_t efagda_wc_read_slid(efa_io_cdesc_common* cqe)
 {
 	struct efa_io_rx_cdesc *rcqe;
 
-	rcqe = container_of(cq->cur_cqe, struct efa_io_rx_cdesc, common);
+	rcqe = container_of(cqe, struct efa_io_rx_cdesc, common);
 
 	return rcqe->ah;
 }
@@ -424,19 +423,20 @@ __device__ void efagda_flush_recv_wrs(efa_qp *qp)
 
 __device__ void efa_poll_cq(efa_cq* cq, int nwc, ibv_wc* wc, int* result)
 {
-    if (!efagda_cq_poll_next(cq)) {
+    efa_io_cdesc_common* cqe;
+    if (!efagda_cq_poll_next(cq, &cqe)) {
         *result = 0;
         return;
     }
 
-    wc->wr_id = efagda_wc_read_req_id(cq);
+    wc->wr_id = efagda_wc_read_req_id(cqe);
     wc->status = (ibv_wc_status)0;
-    wc->opcode = (ibv_wc_opcode)efagda_wc_read_opcode(cq);
-    wc->vendor_err = efagda_wc_read_vendor_err(cq);
-    wc->byte_len = efagda_wc_read_byte_len(cq);
-    wc->imm_data = efagda_wc_read_imm_data(cq);
-    wc->qp_num = efagda_wc_read_qp_num(cq);
-    wc->src_qp = efagda_wc_read_src_qp(cq);
+    wc->opcode = (ibv_wc_opcode)efagda_wc_read_opcode(cqe);
+    wc->vendor_err = efagda_wc_read_vendor_err(cqe);
+    wc->byte_len = efagda_wc_read_byte_len(cqe);
+    wc->imm_data = efagda_wc_read_imm_data(cqe);
+    wc->qp_num = efagda_wc_read_qp_num(cqe);
+    wc->src_qp = efagda_wc_read_src_qp(cqe);
     wc->wc_flags = 0;
     *result = 1;
 }
