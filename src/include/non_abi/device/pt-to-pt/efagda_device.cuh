@@ -25,8 +25,27 @@
 #define NVSHMEMI_MIN(x, y) ((x) < (y) ? (x) : (y))
 #define NVSHMEMI_MAX(x, y) ((x) > (y) ? (x) : (y))
 
+#define EFA_SEND_WQE_SHIFT 6  // log2(64) since efa_io_tx_wqe is 64 bytes
+
+#ifndef ACCESS_ONCE
+#define ACCESS_ONCE(x) (*(volatile typeof(x) *)&(x))
+#endif
+
+/**
+ * DO NOT use BSWAP(READ_ONCE(x)) as it could create a bug.
+ * BSWAP is a pre-processor function. It will be unrolled to many READ_ONCE.
+ */
+#ifndef READ_ONCE
+#define READ_ONCE(x) ACCESS_ONCE(x)
+#endif
+
+#ifndef WRITE_ONCE
+#define WRITE_ONCE(x, v) (ACCESS_ONCE(x) = (v))
+#endif
+
+
 // TODO REMOVE
-// #define __CUDA_ARCH__ 1
+#define __CUDA_ARCH__ 1
 
 #ifdef __CUDA_ARCH__
 
@@ -196,13 +215,11 @@ __device__ uint32_t efagda_wc_read_slid(efa_io_cdesc_common* cqe)
 	return rcqe->ah;
 }
 
-__device__ int efagda_sq_init_wr(efa_qp* qp, enum efa_io_send_op_type op_type, uint16_t wr_id) {
-    struct efa_io_tx_wqe *wqe = &qp->sq.curr_wqe;
-
+__device__ int efagda_sq_init_wr(struct efa_io_tx_wqe *wqe, enum efa_io_send_op_type op_type, uint16_t wr_id) {
     memset(wqe, 0, sizeof(*wqe));
     EFA_SET(&wqe->meta.ctrl1, EFA_IO_TX_META_DESC_META_DESC, 1);
 	EFA_SET(&wqe->meta.ctrl1, EFA_IO_TX_META_DESC_OP_TYPE, op_type);
-	EFA_SET(&wqe->meta.ctrl2, EFA_IO_TX_META_DESC_PHASE, qp->sq.wq.phase);
+	EFA_SET(&wqe->meta.ctrl2, EFA_IO_TX_META_DESC_PHASE, qp->mvars.mgmt.wqes_posted & 1);
 	EFA_SET(&wqe->meta.ctrl2, EFA_IO_TX_META_DESC_FIRST, 1);
 	EFA_SET(&wqe->meta.ctrl2, EFA_IO_TX_META_DESC_LAST, 1);
 	EFA_SET(&wqe->meta.ctrl2, EFA_IO_TX_META_DESC_COMP_REQ, 1);
@@ -237,7 +254,7 @@ __device__ int efagda_init_send_wr(efa_qp* qp, uint16_t wr_id) {
     return efagda_sq_init_wr(qp, EFA_IO_SEND, wr_id);
 }
 
-__device__ int efagda_init_send_imm_wr(efa_qp* qp, uint16_t wr_id, uint32_t imm_data)
+__device__ int efagda_init_send_imm_wr(struct efa_io_tx_wqe *wqe, uint16_t wr_id, uint32_t imm_data)
 {
     int ret;
 
@@ -245,12 +262,12 @@ __device__ int efagda_init_send_imm_wr(efa_qp* qp, uint16_t wr_id, uint32_t imm_
     if (ret)
         return ret;
 
-    efagda_set_wqe_imm_data(&qp->sq.curr_wqe, imm_data);
+    efagda_set_wqe_imm_data(wqe, imm_data);
 
     return 0;
 }
 
-__device__ int efagda_init_rdma_read_wr(efa_qp* qp, uint16_t wr_id, uint32_t rkey, uint64_t remote_addr)
+__device__ int efagda_init_rdma_read_wr(struct efa_io_tx_wqe *wqe, uint16_t wr_id, uint32_t rkey, uint64_t remote_addr)
 {
     int ret;
 
@@ -258,12 +275,12 @@ __device__ int efagda_init_rdma_read_wr(efa_qp* qp, uint16_t wr_id, uint32_t rke
     if (ret)
         return ret;
 
-	efagda_set_remote_mem(&qp->sq.curr_wqe.data.rdma_req.remote_mem, rkey, remote_addr);
+	efagda_set_remote_mem(&wqe->data.rdma_req.remote_mem, rkey, remote_addr);
 
     return 0;
 }
 
-__device__ int efagda_init_rdma_write_wr(efa_qp* qp, uint16_t wr_id, uint32_t rkey, uint64_t remote_addr)
+__device__ int efagda_init_rdma_write_wr(struct efa_io_tx_wqe *wqe, uint16_t wr_id, uint32_t rkey, uint64_t remote_addr)
 {
     int ret;
 
@@ -271,37 +288,34 @@ __device__ int efagda_init_rdma_write_wr(efa_qp* qp, uint16_t wr_id, uint32_t rk
     if (ret)
         return ret;
 
-	efagda_set_remote_mem(&qp->sq.curr_wqe.data.rdma_req.remote_mem, rkey, remote_addr);
+	efagda_set_remote_mem(&wqe->data.rdma_req.remote_mem, rkey, remote_addr);
 
     return 0;
 }
 
-__device__ int efagda_init_rdma_write_imm_wr(efa_qp* qp, uint16_t wr_id, uint32_t rkey, uint64_t remote_addr, uint32_t imm_data)
+__device__ int efagda_init_rdma_write_imm_wr(struct efa_io_tx_wqe *wqe, uint16_t wr_id, uint32_t rkey, uint64_t remote_addr, uint32_t imm_data)
 {
     int ret;
 
-    ret = efagda_sq_init_wr(qp, EFA_IO_RDMA_WRITE, wr_id);
+    ret = efagda_sq_init_wr(wke, EFA_IO_RDMA_WRITE, wr_id);
     if (ret)
         return ret;
 
-	efagda_set_remote_mem(&qp->sq.curr_wqe.data.rdma_req.remote_mem, rkey, remote_addr);
-    efagda_set_wqe_imm_data(&qp->sq.curr_wqe, imm_data);
+	efagda_set_remote_mem(&wqe->data.rdma_req.remote_mem, rkey, remote_addr);
+    efagda_set_wqe_imm_data(wqe, imm_data);
 
     return 0;
 }
 
-__device__ void efagda_wr_set_remote_addr(efa_qp* qp, uint16_t ah, uint32_t remote_qpn, uint32_t remote_qkey)
+__device__ void efagda_wr_set_remote_addr(struct efa_io_tx_wqe *wqe, uint16_t ah, uint32_t remote_qpn, uint32_t remote_qkey)
 {
-    struct efa_io_tx_wqe *wqe = &qp->sq.curr_wqe;
-
 	wqe->meta.ah = ah;
 	wqe->meta.dest_qp_num = remote_qpn;
 	wqe->meta.qkey = remote_qkey;
 }
 
-__device__ int efagda_wr_set_inline_data(efa_qp *qp, void *addr, size_t length)
+__device__ int efagda_wr_set_inline_data(struct efa_io_tx_wqe *wqe, void *addr, size_t length)
 {
-	struct efa_io_tx_wqe *wqe = &qp->sq.curr_wqe;
     uint8_t op_type;
 
 	if (length > sizeof(wqe->data.inline_data))
@@ -318,13 +332,12 @@ __device__ int efagda_wr_set_inline_data(efa_qp *qp, void *addr, size_t length)
     return 0;
 }
 
-__device__ int efagda_wr_set_sge(efa_qp *qp, uint32_t lkey, uint64_t addr, uint32_t length)
+__device__ int efagda_wr_set_sge(struct efa_io_tx_wqe *wqe, uint32_t lkey, uint64_t addr, uint32_t length)
 {
 	struct efa_io_tx_buf_desc *buf;
 	struct efa_io_tx_wqe *wqe;
 	uint8_t op_type;
 
-	wqe = &qp->sq.curr_wqe;
 	wqe->meta.length = 1;
 
 	op_type = EFA_GET(&wqe->meta.ctrl1, EFA_IO_TX_META_DESC_OP_TYPE);
@@ -345,39 +358,29 @@ __device__ int efagda_wr_set_sge(efa_qp *qp, uint32_t lkey, uint64_t addr, uint3
     return 0;
 }
 
-__device__ int efagda_finalize_send_wr(efa_qp *qp)
+__device__ int efagda_finalize_send_wr(nvshmemi_efagda_device_qp_t *qp)
 {
-    struct efa_io_tx_wqe *wqe = &qp->sq.curr_wqe;
-    uint32_t sq_desc_offset;
+    atomicAdd(&qp->mvars.mgmt.wqes_posted, 1);
+	atomicAdd(&qp->mvars.mgmt.prod_idx, 1);
 
-    sq_desc_offset = (qp->sq.wq.pc & qp->sq.wq.queue_mask) * sizeof(*wqe);
-    memcpy(qp->sq.buf + sq_desc_offset, wqe, sizeof(*wqe));
-
-    atomicAdd(&qp->sq.wq.wqes_posted, 1);
-	atomicAdd(&qp->sq.wq.pc, 1);
-
-	if (!(qp->sq.wq.pc & qp->sq.wq.queue_mask))
-		atomicAdd(&qp->sq.wq.phase, 1);
-
-    atomicAdd(&qp->sq.wq.wqes_pending, 1);
-    if (qp->sq.wq.wqes_pending == qp->sq.wq.max_batch) {
+    atomicAdd(&qp->mvars.mgmt.wqes_pending, 1);
+    if (qp->mvars.mgmt.wqes_pending >= qp->mvars.attr.max_batch) {
         __threadfence_system();
-        *qp->sq.wq.db = qp->sq.wq.pc;
-
-        qp->sq.wq.wqes_pending = 0;
+        *qp->mvars.attr.db = qp->mvars.mgmt.prod_idx;
+        qp->mvars.mgmt.wqes_pending = 0;
     }
 
     return 0;
 }
 
-__device__ void efagda_flush_send_wrs(efa_qp *qp)
+__device__ void efagda_flush_send_wrs(nvshmemi_efagda_device_qp_t *qp)
 {
-    if (!qp->sq.wq.wqes_pending)
+    if (!qp->mvars.mgmt.wqes_pending)
         return;
 
     __threadfence_system();
-    *qp->sq.wq.db = qp->sq.wq.pc;
-    qp->sq.wq.wqes_pending = 0;
+    *qp->mvars.attr.db = qp->mvars.mgmt.prod_idx;
+    qp->mvars.mgmt.wqes_pending = 0;
 }
 
 __device__ int efagda_post_recv_wr(efa_qp* qp, uint64_t addr, uint32_t length, uint32_t lkey) {
@@ -445,16 +448,19 @@ __device__ void efa_poll_cq(efa_cq* cq, int nwc, ibv_wc* wc, int* result)
  *  ^^^^^^^^ Generic EFA GDA Code Above, NVSHMEM Custom Code Below >>>>>>>
  ************************************************************************/
 
+ // GOOD, DO NOT TOUCH!!!
 __device__ nvshmemi_efagda_device_state_t *efagda_get_device_transport_state() {
     return (nvshmemi_efagda_device_state_t *)&nvshmemi_device_transport_state_d;
 }
 
+ // GOOD, DO NOT TOUCH!!!
 __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE size_t
 efagda_cal_transfer_size(size_t req_size, size_t lchunk_size, size_t rchunk_size) {
     return NVSHMEMI_MIN(EFAGDA_MAX_TRANSFER_SIZE,
                         NVSHMEMI_MIN(req_size, NVSHMEMI_MIN(rchunk_size, lchunk_size)));
 }
 
+ // GOOD, DO NOT TOUCH!!!
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_get_lkey(
     uint64_t addr, uint32_t *out_lkey, size_t *out_chunk_size) {
     nvshmemi_efagda_device_state_t *state = efagda_get_device_transport_state();
@@ -476,6 +482,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_get_lkey(
     assert(0);
 }
 
+ // GOOD, DO NOT TOUCH!!!
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_get_raddr_rkey(
     uint64_t addr, int dst_pe, uint64_t *out_raddr, uint32_t *out_rkey, size_t *out_chunk_size) {
     nvshmemi_efagda_device_state_t *state = efagda_get_device_transport_state();
@@ -503,6 +510,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_get_raddr_rkey(
 
 }
 
+ // GOOD, DO NOT TOUCH!!!
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_get_ah_info(
     int dst_pe, uint16_t *out_ah, uint16_t *out_remote_qpn, uint32_t *out_remote_qkey) {
     struct cuda_ah_info ah_info;
@@ -514,50 +522,427 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_get_ah_info(
     *out_remote_qkey = ah_info.remote_qkey;
 }
 
-template <threadgroup_t SCOPE, nvshmemi_op_t channel_op>
-__device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_rma_nbi(void *rptr, void *lptr,
-                                                                      size_t bytes, int dst_pe) {
-    nvshmemi_threadgroup_sync<SCOPE>();
-    int my_tid = nvshmemi_thread_id_in_threadgroup<NVSHMEMI_THREADGROUP_WARP>();
-    if (my_tid == 0) {
-        nvshmemi_efagda_device_state_t *state = efagda_get_device_transport_state();
 
-        struct efa_qp *qp = state->cuda_qp;
+__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void *efagda_get_wqe_ptr(
+    nvshmemi_efagda_device_qp_t *qp, uint16_t wqe_idx) {
+    uint16_t cnt = qp->tx_wq.nwqes;
+    uint16_t idx = wqe_idx & (cnt - 1);
+    return (void *)((uintptr_t)qp->tx_wq.wqe + (idx << EFA_SEND_WQE_SHIFT));
+}
 
-        uint16_t ah;
-        uint16_t remote_qpn;
-        uint32_t remote_qkey;
-        efagda_get_ah_info(dst_pe, &ah, &remote_qpn, &remote_qkey);
 
-        size_t remaining_size = bytes;
-        uint64_t laddr = (uint64_t)lptr;
-        uint64_t raddr_base = (uint64_t)rptr;
+// Prevent code reordering from both compiler and GPU
+__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void EFAGDA_MFENCE() {
+#ifdef NVSHMEMI_IBGDA_PTX_OPTIMIZATION_MFENCE
+    asm volatile("fence.acq_rel.cta;" ::: "memory");
+#else
+    __threadfence_block();
+#endif /* NVSHMEMI_EFAGDA_PTX_OPTIMIZATION_MFENCE */
+}
 
-        while (remaining_size > 0) {
-            uint32_t lkey;
-            size_t lchunk_size;
-            efagda_get_lkey(laddr, &lkey, &lchunk_size);
+__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE int efagda_poll_cq(
+    nvshmemi_efagda_device_cq_t *cq, uint64_t idx, int *error) {
+    int status = 0;
+    struct mlx5_cqe64 *cqe64 = (struct mlx5_cqe64 *)cq->cqe;
 
-            uint32_t rkey;
-            uint64_t raddr;
-            size_t rchunk_size;
-            efagda_get_raddr_rkey(raddr_base, dst_pe, &raddr, &rkey, &rchunk_size);
+    const uint32_t ncqes = cq->ncqes;
 
-            size_t transfer_size = efagda_cal_transfer_size(remaining_size, lchunk_size, rchunk_size);
+    uint8_t opown;
+    uint8_t opcode;
+    uint16_t wqe_counter;
+    uint16_t new_wqe_counter;
 
-            efagda_init_rdma_write_wr(qp, 0, rkey, raddr);
-            efagda_wr_set_remote_addr(qp, ah, remote_qpn, remote_qkey);
-            efagda_wr_set_sge(qp, lkey, laddr, transfer_size);
-            efagda_finalize_send_wr(qp);
+#ifdef NVSHMEM_TIMEOUT_DEVICE_POLLING
+    uint64_t start = ibgda_query_globaltimer();
+    uint64_t now;
+#endif
 
-            laddr += transfer_size;
-            raddr_base += transfer_size;
-            remaining_size -= transfer_size;
-        }
+    uint64_t cons_idx = ibgda_atomic_read(cq->cons_idx);
+    uint64_t new_cons_idx;
 
-        efagda_flush_send_wrs(qp);
+    assert(likely(cq->qp_type == NVSHMEMI_IBGDA_DEVICE_QP_TYPE_DCI ||
+                  cq->qp_type == NVSHMEMI_IBGDA_DEVICE_QP_TYPE_RC));
+
+    if (unlikely(cons_idx >= idx)) goto out;
+
+#ifdef NVSHMEM_IBGDA_DEBUG
+    // We can skip opcode == MLX5_CQE_INVALID check because we have already
+    // initialized the CQ buffer to 0xff. With the QP depth range we enforce,
+    // cons_idx cannot progress unless wqe_counter read from the CQ buffer is
+    // a valid value.
+    do {
+        opown = ibgda_atomic_read(&cqe64->op_own);
+        opcode = opown >> 4;
+
+#ifdef NVSHMEM_TIMEOUT_DEVICE_POLLING
+        // TODO: Integrate timeout handler with the core NVSHMEM
+        now = ibgda_query_globaltimer();
+        status = ibgda_check_poll_timeout(cq, now, start, idx, error);
+        if (status != 0) goto check_opcode;
+#endif /* NVSHMEM_TIMEOUT_DEVICE_POLLING */
+    } while (unlikely(opcode == MLX5_CQE_INVALID));
+
+    // Prevent reordering of the opcode wait above
+    EFAGDA_MFENCE();
+#endif /* NVSHMEM_IBGDA_DEBUG */
+
+#ifdef NVSHMEM_TIMEOUT_DEVICE_POLLING
+    start = ibgda_query_globaltimer();
+#endif
+
+    // If idx is a lot greater than cons_idx, we might get incorrect result due
+    // to wqe_counter wraparound. We need to check prod_idx to be sure that idx
+    // has already been submitted.
+    while (unlikely(ibgda_atomic_read(cq->prod_idx) < idx))
+        ;
+    EFAGDA_MFENCE();
+
+    do {
+        new_wqe_counter = ibgda_atomic_read(&cqe64->wqe_counter);
+        new_wqe_counter = BSWAP16(new_wqe_counter);
+#ifdef NVSHMEM_TIMEOUT_DEVICE_POLLING
+        now = ibgda_query_globaltimer();
+        status = ibgda_check_poll_timeout(cq, now, start, idx, error);
+        if (status != 0) goto check_opcode;
+
+        // Observe progress. Reset the timer.
+        if (new_wqe_counter != wqe_counter) start = now;
+#endif
+        wqe_counter = new_wqe_counter;
+
+        // Another thread may have updated cons_idx.
+        cons_idx = ibgda_atomic_read(cq->cons_idx);
+        if (likely(cons_idx >= idx)) goto out;
+    }
+    // NOTE: This while loop is part of do while above.
+    // wqe_counter is the HW consumer index. However, we always maintain index
+    // + 1 in SW. To be able to compare with idx, we need to use wqe_counter +
+    // 1. Because wqe_counter is uint16_t, it may wraparound. Still we know for
+    // sure that if idx - wqe_counter - 1 < ncqes, wqe_counter + 1 is less than
+    // idx, and thus we need to wait. We don't need to wait when idx ==
+    // wqe_counter + 1. That's why we use - (uint16_t)2 here to make this case
+    // wraparound.
+    while (unlikely(((uint16_t)((uint16_t)idx - wqe_counter - (uint16_t)2) < ncqes)));
+
+    // new_cons_idx is uint64_t but wqe_counter is uint16_t. Thus, we get the
+    // MSB from idx. We also need to take care of wraparound.
+    ++wqe_counter;
+    new_cons_idx =
+        (idx & ~(0xffffULL) | wqe_counter) + (((uint16_t)idx > wqe_counter) ? 0x10000ULL : 0x0);
+    atomicMax((unsigned long long int *)cq->cons_idx, (unsigned long long int)new_cons_idx);
+
+#ifdef NVSHMEM_TIMEOUT_DEVICE_POLLING
+check_opcode:
+#endif
+
+    // NVSHMEM always treats CQE errors as fatal.
+    // Even if this error doesn't belong to the CQE in cons_idx,
+    // we will just report and terminate the process.
+    opown = ibgda_atomic_read(&cqe64->op_own);
+    opcode = opown >> 4;
+
+    if (unlikely(opcode == MLX5_CQE_REQ_ERR)) {
+        ibgda_mlx5_err_cqe_t *cqe_err = (ibgda_mlx5_err_cqe_t *)cqe64;
+        *error = cqe_err->syndrome;
+#ifdef NVSHMEM_IBGDA_DEBUG
+        __be16 wqe_counter = ibgda_atomic_read(&cqe_err->wqe_counter);
+        __be32 s_wqe_opcode_qpn = ibgda_atomic_read(&cqe_err->s_wqe_opcode_qpn);
+        printf(
+            "[%d] got completion with err:\n"
+            "   syndrome=%#x, vendor_err_synd=%#x, hw_err_synd=%#x, hw_synd_type=%#x,\n"
+            "   wqe_counter=%#x, s_wqe_opcode_qpn=%#x,\n"
+            "   cqn=%#x, cons_idx=%#lx, prod_idx=%#lx, idx=%#lx\n",
+            nvshmemi_device_state_d.mype, cqe_err->syndrome, cqe_err->vendor_err_synd,
+            cqe_err->hw_err_synd, cqe_err->hw_synd_type, BSWAP16(wqe_counter),
+            BSWAP32(s_wqe_opcode_qpn), cq->cqn, cons_idx, ibgda_atomic_read(cq->prod_idx), idx);
+#endif /* NVSHMEM_IBGDA_DEBUG */
+        status = -1;
     }
 
+out:
+    // Prevent reordering of this function and subsequent instructions
+    EFAGDA_MFENCE();
+
+    return status;
+}
+
+__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_wait_for_slot_availability(
+    nvshmemi_efagda_device_qp_t *qp, uint64_t wqe_idx) {
+    int status = 0;
+    int err = 0;
+    uint16_t nwqes = qp->tx_wq.nwqes;
+
+    // We don't want wqe_idx - nwqes to wraparound.
+    if (likely(wqe_idx >= nwqes)) {
+        nvshmemi_efagda_device_cq_t cq = *qp->tx_wq.cq;
+        status = efagda_poll_cq(&cq, wqe_idx - nwqes, &err);
+        // TODO: Integrate the error handler with the core NVSHMEM
+        if (status) {
+            printf("ibgda_poll_cq failed with error=%d.\n", err);
+        }
+        assert(likely(status == 0));
+    }
+    EFAGDA_MFENCE();
+}
+
+__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE uint64_t efagda_reserve_wqe_slots(
+    nvshmemi_efagda_device_qp_t *qp, unsigned long long int num_wqes) {
+    nvshmemi_efagda_device_qp_management_t *mvars = &qp->mvars;
+    uint64_t wqe_idx;
+
+    wqe_idx = atomicAdd((unsigned long long int *)&mvars->tx_wq.resv_head, num_wqes);
+
+    // If last slot is available, all prior slots are also available.
+    efagda_wait_for_slot_availability(qp, wqe_idx + num_wqes);
+    return wqe_idx;
+}
+
+template <threadgroup_t SCOPE>
+__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_lock_acquire(int *lock) {
+    if (nvshmemi_thread_id_in_threadgroup<SCOPE>() == 0)
+        while (atomicCAS(lock, 0, 1) == 1)
+            ;  // Wait until we get the lock.
+
+    if (SCOPE == NVSHMEMI_THREADGROUP_THREAD)
+        EFAGDA_MFENCE();  // Prevent reordering before lock is acquired.
+
+    // For other scopes, __syncwarp / __syncthreads guarantee the ordering
+    nvshmemi_threadgroup_sync<SCOPE>();
+}
+
+template <threadgroup_t SCOPE>
+__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_lock_release(int *lock) {
+    // For other scopes, __syncwarp / __syncthreads guarantee the ordering
+    nvshmemi_threadgroup_sync<SCOPE>();
+
+    if (SCOPE == NVSHMEMI_THREADGROUP_THREAD)
+        EFAGDA_MFENCE();  // Prevent reordering before lock is released.
+
+    if (nvshmemi_thread_id_in_threadgroup<SCOPE>() == 0) ibgda_atomic_set(lock, 0);
+}
+
+
+__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_post_send(
+    nvshmemi_ibgda_device_qp_t *qp, uint64_t new_prod_idx) {
+    nvshmemi_efagda_device_qp_management_t *mvars = &qp->mvars;
+    uint64_t old_prod_idx;
+
+    // Update prod_idx before ringing the db so that we know which index is needed in quiet/fence.
+    efagda_lock_acquire<NVSHMEMI_THREADGROUP_THREAD>(&mvars->post_send_lock);
+
+    old_prod_idx = atomicMax((unsigned long long int *)&mvars->tx_wq.prod_idx,
+                             (unsigned long long int)new_prod_idx);
+
+    if (likely(new_prod_idx > old_prod_idx)) {
+        EFAGDA_MEMBAR();
+        efagda_update_dbr(qp, new_prod_idx);
+        EFAGDA_MEMBAR();
+        efagda_ring_db(qp, new_prod_idx);
+    }
+
+    efagda_lock_release<NVSHMEMI_THREADGROUP_THREAD>(&mvars->post_send_lock);
+}
+
+__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_submit_requests(
+    nvshmemi_efagda_device_qp_t *qp, uint64_t base_wqe_idx, uint16_t num_wqes) {
+    nvshmemi_efagda_device_state_t *state = efagda_get_state();
+    nvshmemi_efagda_device_qp_management_t *mvars = &qp->mvars;
+    uint64_t mask = ~((uint64_t)(state->num_requests_in_batch - 1));
+
+    uint64_t new_wqe_idx = base_wqe_idx + num_wqes;
+
+    unsigned long long int *ready_idx =
+        (unsigned long long int *)(state->use_async_postsend ? qp->tx_wq.prod_idx
+                                                             : &mvars->tx_wq.ready_head);
+
+    EFAGDA_MEMBAR_NO_OPTIMIZATION();
+
+    while (atomicCAS(ready_idx, (unsigned long long int)base_wqe_idx,
+                     (unsigned long long int)new_wqe_idx) != base_wqe_idx)
+            ;  // wait here
+
+    EFAGDA_MFENCE();
+
+    bool do_post_send =
+        (new_wqe_idx == ACCESS_ONCE(&mvars->tx_wq.resv_head))  // No concurrent submissions
+        || ((base_wqe_idx & mask) != (new_wqe_idx & mask))     // Num of not-yet-posted wqes is beyond the threshold.
+        || (num_wqes >= state->num_requests_in_batch);         // The number of wqes in this submission
+                                                               // reaches the threshold.
+
+    if (do_post_send) efagda_post_send(qp, new_wqe_idx);
+}
+
+
+
+// TODO Add Warp coalesce-ing
+// TODO Add need_cst
+// This Assumes it is getting called with a single thread
+template <nvshmemi_op_t channel_op, bool nbi>
+__device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_rma_thread(uint64_t rptr,
+                                                                                uint64_t lptr,
+                                                                                size_t remaining_size,
+                                                                                int dst_pe) {
+    if (unlikely(remaining_size == 0)) return;
+
+    nvshmemi_efagda_device_state_t *state = efagda_get_state();
+    nvshmemi_efagda_device_qp_t *qp = state->cuda_qp;
+    int my_tid = nvshmemi_thread_id_in_threadgroup<NVSHMEMI_THREADGROUP_THREAD>();
+    int tg_size = nvshmemi_threadgroup_size<NVSHMEMI_THREADGROUP_THREAD>();
+
+    while (remaining_size > 0) {
+        uint32_t lkey;
+        size_t lchunk_size;
+        efagda_get_lkey(lptr, &lkey, &lchunk_size);
+
+        uint32_t rkey;
+        uint64_t raddr;
+        size_t rchunk_size;
+        efagda_get_raddr_rkey(rptr, dst_pe, &raddr, &rkey, &rchunk_size);
+
+        size_t transfer_size = efagda_cal_transfer_size(remaining_size, lchunk_size, rchunk_size);
+
+
+        // TODO Implement
+        // TODO 1: efagda_reserve_wqe_slots
+        // TODO 2: efagda_get_wqe_ptr
+        // TODO 3: efagda_submit_requests
+
+
+        uint64_t base_wqe_idx = efagda_reserve_wqe_slots(qp, tg_size);
+        uint64_t my_wqe_idx = base_wqe_idx + my_tid;
+
+        struct efa_io_tx_wqe *wqe = efagda_get_wqe_ptr(qp, my_wqe_idx);
+
+
+        efagda_init_rdma_write_wr(wqe, 0, rkey, raddr);
+        efagda_wr_set_remote_addr(wqe, ah, remote_qpn, remote_qkey);
+        efagda_wr_set_sge(wqe, lkey, laddr, transfer_size);
+        efagda_finalize_send_wr(wqe);
+
+
+        if (my_tid == tg_size - 1) {
+            // Require membar.sys to push data buffer to the point of consistency.
+            if (channel_op == NVSHMEMI_OP_PUT && is_data_buf_in_sysmem) __threadfence_system();
+            efagda_submit_requests(qp, base_wqe_idx, num_wqes);
+        }
+
+        remaining_size -= transfer_size;
+        rptr += transfer_size;
+        lptr += transfer_size;
+    }
+
+    if (!nbi && !did_quiet) {
+        // CST, if required, has already been enqueued. We simply need to
+        // do ibgda_quiet here.
+        efagda_quiet(qp);
+    }
+}
+
+template <threadgroup_t SCOPE, nvshmemi_op_t channel_op>
+__device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_rma_nbi(void *in_rptr, void *in_lptr,
+                                                                      size_t bytes, int dst_pe) {
+    if (unlikely(bytes == 0)) goto out;
+
+    int my_tid = nvshmemi_thread_id_in_threadgroup<SCOPE>();
+
+    // Not warp 0, wait at the exit.
+    if (my_tid >= tg_size) {
+        goto out;
+    }
+
+    // lets define some vars
+    nvshmemi_efagda_device_state_t *state = efagda_get_device_transport_state();
+    int tg_size = nvshmemi_threadgroup_size<NVSHMEMI_THREADGROUP_WARP>();
+
+    int num_wqes;
+    uint64_t base_wqe_idx;
+    uint64_t my_wqe_idx;
+    void *wqe_ptr;
+
+    size_t remaining_size = bytes;
+    size_t transfer_size;
+    size_t my_transfer_size = 0;
+
+    uint64_t rptr = (uint64_t)in_rptr;
+    uint64_t lptr = (uint64_t)in_lptr;
+
+    uint32_t lkey;
+    uint32_t my_lkey = 0;
+    uint32_t my_laddr;
+    uint32_t lchunk_size;
+
+    uint32_t rkey;
+    uint32_t my_rkey = 0;
+    uint32_t raddr;
+    uint32_t my_raddr;
+    size_t rchunk_size;
+
+    int chunk_idx = 0;
+
+
+    nvshmemi_efagda_device_qp_t *qp = state->cuda_qp; // TODO IBGDA Optimizes this, do I need to?
+
+    // Calculate how many chunks we need to send.
+    while (remaining_size > 0) {
+        efagda_get_lkey(lptr, &lkey, &lchunk_size, &is_data_buf_in_sysmem, qp->dev_idx);
+        efagda_get_raddr_rkey(rptr, dst_pe, proxy_pe, &raddr, &rkey, &rchunk_size, qp->dev_idx);
+        transfer_size = efagda_cal_transfer_size(remaining_size, lchunk_size, rchunk_size);
+        if (my_tid == chunk_idx) {
+            my_lkey = lkey;
+            my_laddr = lptr;
+            my_rkey = rkey;
+            my_raddr = raddr;
+            my_transfer_size = transfer_size;
+        }
+
+        remaining_size -= transfer_size;
+        rptr += transfer_size;
+        lptr += transfer_size;
+
+        ++chunk_idx;
+    }
+
+    // Too many chunks. Use ibgda_rma_thread to handle it instead.
+    if (unlikely(chunk_idx > tg_size)) {
+        if (my_tid == 0) {
+            efagda_rma_thread<channel_op, nbi, support_half_av_seg>(req_rptr, req_lptr, bytes,
+                                                                   dst_pe, proxy_pe);
+        }
+        goto out;
+    }
+
+    num_wqes = num_wqes_per_cmd * chunk_idx + (need_additional_wqe ? 1 : 0);
+
+    if (my_tid == 0) {
+        base_wqe_idx = efagda_reserve_wqe_slots(qp, num_wqes, is_qp_shared_among_ctas);
+    }
+
+    base_wqe_idx = __shfl_sync(EFAGDA_FULL_WARP, base_wqe_idx, 0);
+    my_wqe_idx = base_wqe_idx + (my_tid * num_wqes_per_cmd);
+
+    if (my_tid < chunk_idx) {
+        wqe_ptrs[0] = ibgda_get_wqe_ptr(qp, my_wqe_idx);
+        ibgda_write_rdma_write_wqe<support_half_av_seg>(qp, dct, my_laddr, my_lkey,
+                                                        my_raddr, my_rkey, my_transfer_size,
+                                                        my_wqe_idx, fm_ce_se, wqe_ptrs);
+    }
+
+    nvshmemi_warp_sync();
+
+    if (my_tid == chunk_idx - 1) {
+        // Require membar.sys to push data buffer to the point of consistency.
+        if (channel_op == NVSHMEMI_OP_PUT && is_data_buf_in_sysmem) __threadfence_system();
+
+        ibgda_submit_requests<true>(qp, base_wqe_idx, num_wqes);
+
+        if (!nbi) {
+            // CST, if required, has already been enqueued. We simply need to
+            // do ibgda_quiet here.
+            ibgda_quiet(qp);
+        }
+    }
+
+out:
     nvshmemi_threadgroup_sync<SCOPE>();
 }
 

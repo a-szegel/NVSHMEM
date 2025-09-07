@@ -148,12 +148,12 @@ static int nvshmemt_efagda_can_reach_peer(int *access,
 
 static int nvshmemt_efagda_create_cuda_cq(void* device_buffer, uint16_t num_sub_cqs,
                                           uint32_t sub_cq_size, uint32_t cqe_size,
-                                          struct efa_cq **cuda_cq) {
+                                          nvshmemi_efagda_device_cq_t **cuda_cq) {
     cudaError_t cuda_err;
 
     // Allocate device CQ structure
-    efa_cq* d_cq;
-    cuda_err = cudaMalloc(&d_cq, sizeof(efa_cq));
+    nvshmemi_efagda_device_cq_t* d_cq;
+    cuda_err = cudaMalloc(&d_cq, sizeof(nvshmemi_efagda_device_cq_t));
     if (cuda_err != cudaSuccess) {
         printf("Failed to allocate device memory for cq: %s\n",
                cudaGetErrorString(cuda_err));
@@ -161,15 +161,14 @@ static int nvshmemt_efagda_create_cuda_cq(void* device_buffer, uint16_t num_sub_
     }
 
     // Initialize and copy CQ structure
-    efa_cq h_cq = {};
-    h_cq.buf = (uint8_t *)device_buffer;
+    nvshmemi_efagda_device_cq_t h_cq = {};
+    h_cq.cqe = device_buffer;
     h_cq.entry_size = cqe_size;
     h_cq.num_entries = sub_cq_size;
     h_cq.queue_mask = sub_cq_size - 1;
-    h_cq.consumed_cnt = 0;
     h_cq.phase = 1;
 
-    cuda_err = cudaMemcpy(d_cq, &h_cq, sizeof(efa_cq), cudaMemcpyHostToDevice);
+    cuda_err = cudaMemcpy(d_cq, &h_cq, sizeof(nvshmemi_efagda_device_cq_t), cudaMemcpyHostToDevice);
     if (cuda_err != cudaSuccess) {
         cudaFree(d_cq);
         printf("Failed to copy cq to device: %s\n",
@@ -243,7 +242,7 @@ out:
 }
 
 static int nvshmemt_efagda_create_cq(nvshmemt_efagda_state_t *efagda_state, uint32_t cq_size,
-                                     struct fid_cq **cq_ext, struct efa_cq **cuda_cq) {
+                                     struct fid_cq **cq_ext, nvshmemi_efagda_device_cq_t **cuda_cq) {
     int status = 0;
     int dmabuf_fd;
     void *cq_buffer = NULL;
@@ -304,12 +303,12 @@ out:
 static int nvshmemt_efagda_create_cuda_qp(uint8_t *sq_buffer, uint32_t sq_num_wqes,
                                           uint32_t *sq_db, uint32_t sq_max_batch,
                                           uint8_t *rq_buffer, uint32_t rq_num_wqes,
-                                          uint32_t *rq_db, struct efa_qp **cuda_qp) {
+                                          uint32_t *rq_db, nvshmemi_efagda_device_qp_t **cuda_qp) {
     cudaError_t cuda_err;
 
     // Allocate device QP structure
-    efa_qp* d_qp;
-    cuda_err = cudaMalloc(&d_qp, sizeof(efa_qp));
+    nvshmemi_efagda_device_qp_t* d_qp;
+    cuda_err = cudaMalloc(&d_qp, sizeof(nvshmemi_efagda_device_qp_t));
     if (cuda_err != cudaSuccess) {
         printf("Failed to allocate device memory for qp: %s\n",
                cudaGetErrorString(cuda_err));
@@ -317,37 +316,31 @@ static int nvshmemt_efagda_create_cuda_qp(uint8_t *sq_buffer, uint32_t sq_num_wq
     }
 
     // Initialize QP structure on host
-    efa_qp h_qp = {};
+    nvshmemi_efagda_device_qp_t h_qp = {};
+    h_qp.version = (1 << 16) + sizeof(nvshmemi_efagda_device_qp_t);
+    h_qp.qp_type = 1; // EFA QP type
+    h_qp.qpn = 0;     // Will be set later
+    h_qp.dev_idx = 0;
 
-    // Initialize SQ
-    h_qp.sq.buf = sq_buffer;
-    h_qp.sq.wq.db = sq_db;
-    h_qp.sq.wq.max_wqes = sq_num_wqes;
-    h_qp.sq.wq.max_batch = sq_max_batch;
-    h_qp.sq.wq.queue_mask = sq_num_wqes - 1;  // Assuming max_wqes is power of 2
-    h_qp.sq.wq.wqes_pending = 0;
-    h_qp.sq.wq.wqes_posted = 0;
-    h_qp.sq.wq.wqes_completed = 0;
-    h_qp.sq.wq.pc = 0;
-    h_qp.sq.wq.phase = 0;
-    // TODO: get from args or delete:
-    h_qp.sq.max_inline_data = 32;
-    h_qp.sq.max_rdma_sges = 2;
+    // Initialize management variables
+    h_qp.mvars.mgmt.resv_head = 0;
+    h_qp.mvars.mgmt.ready_head = 0;
+    h_qp.mvars.mgmt.prod_idx = 0;
+    h_qp.mvars.mgmt.cons_idx = 0;
+    h_qp.mvars.mgmt.post_send_lock = 0;
+    h_qp.mvars.mgmt.wqes_pending = 0;
+    h_qp.mvars.mgmt.wqes_posted = 0;
+    h_qp.mvars.mgmt.wqes_completed = 0;
 
-    // Initialize RQ
-    h_qp.rq.buf = rq_buffer;
-    h_qp.rq.wq.db = rq_db;
-    h_qp.rq.wq.max_wqes = rq_num_wqes;
-    h_qp.rq.wq.max_batch = rq_num_wqes;
-    h_qp.rq.wq.queue_mask = rq_num_wqes - 1;  // Assuming max_wqes is power of 2
-    h_qp.rq.wq.wqes_pending = 0;
-    h_qp.rq.wq.wqes_posted = 0;
-    h_qp.rq.wq.wqes_completed = 0;
-    h_qp.rq.wq.pc = 0;
-    h_qp.rq.wq.phase = 1;
+    // Initialize attributes
+    h_qp.mvars.attr.max_batch = sq_max_batch;
+    h_qp.mvars.attr.max_sge = 2;
+    h_qp.mvars.attr.max_wqes = sq_num_wqes;
+    h_qp.mvars.attr.queue_mask = sq_num_wqes - 1;
+    h_qp.mvars.attr.db = sq_db;
 
     // Copy QP structure to device
-    cuda_err = cudaMemcpy(d_qp, &h_qp, sizeof(efa_qp), cudaMemcpyHostToDevice);
+    cuda_err = cudaMemcpy(d_qp, &h_qp, sizeof(nvshmemi_efagda_device_qp_t), cudaMemcpyHostToDevice);
     if (cuda_err != cudaSuccess) {
         cudaFree(d_qp);
         printf("Failed to copy qp to device: %s\n",

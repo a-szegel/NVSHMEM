@@ -39,49 +39,47 @@ enum efagda_wc_opcode {
 	EFAGDA_WC_RECV_RDMA_WITH_IMM,
 };
 
-struct efa_cq {
-	uint16_t cq_idx;
-	uint8_t *buf;
+// IBGDA-style CQ structure for EFA GDA
+typedef struct {
+	uint32_t* db;
+	uint32_t phase;
+	uint32_t queue_mask;
 	uint32_t entry_size;
 	uint32_t num_entries;
-	uint32_t queue_mask;
-	uint32_t consumed_cnt;
-	int phase;
-	uint32_t* db;
-};
+    void *cqe;
+    uint64_t *prod_idx;
+    uint64_t *cons_idx;
+    uint64_t *resv_head;
+    uint64_t *ready_head;
+} nvshmemi_efagda_device_cq_t;
+static_assert(sizeof(nvshmemi_efagda_device_cq_t) == 64, "efagda_device_cq_t must be 64 bytes.");
 
-struct efa_wq {
-	uint32_t max_sge;
-	uint32_t max_wqes;
-	uint32_t queue_mask;
-	uint32_t *db;
-	uint32_t max_batch;
-	uint32_t wqes_pending;
-	uint32_t wqes_posted;
-	uint32_t wqes_completed;
-	/* Producer counter */
-	uint32_t pc;
-	int phase;
-	uint16_t sub_cq_idx;
-};
-
-struct efa_rq {
-	struct efa_wq wq;
-	uint8_t *buf;
-	size_t buf_size;
-};
+// IBGDA-style QP management structure for EFA GDA
+typedef struct {
+    struct {
+        uint64_t resv_head;   // last reserved wqe idx + 1
+        uint64_t ready_head;  // last ready wqe idx + 1
+        uint64_t prod_idx;    // posted wqe idx + 1 (producer index + 1)
+        uint64_t cons_idx;    // polled wqe idx + 1 (consumer index + 1)
+        uint32_t post_send_lock;
+    } mgmt;
+    struct {
+	    uint32_t max_batch;
+	    uint32_t max_sge;
+	    uint32_t max_wqes;
+	    uint32_t queue_mask;
+	    uint32_t *db;
+    } attr;
+} __attribute__((__aligned__(64))) nvshmemi_efagda_device_qp_management_t;
+static_assert(sizeof(nvshmemi_efagda_device_qp_management_t) == 64,
+              "efagda_device_qp_management_t must be 64 bytes.");
 
 struct efa_sq {
-	struct efa_wq wq;
-	uint8_t *buf;
-	uint32_t max_inline_data;
-	uint32_t max_rdma_sges;
-	struct efa_io_tx_wqe curr_wqe;
+	nvshmemi_efagda_device_qp_management_t wq;
 };
 
 struct efa_qp {
 	struct efa_sq sq;
-	struct efa_rq rq;
 };
 
 // Address handle info for CUDA AV
@@ -120,8 +118,8 @@ typedef struct {
     uint32_t n_pes;
     uint32_t my_pe;
     uint32_t *put_signal_seq_counter;
-    struct efa_qp *cuda_qp;
-    struct efa_cq *cuda_cq;
+    struct efa_qp *cuda_qp;  // Updated to use new QP type
+    nvshmemi_efagda_device_cq_t *cuda_cq;  // Updated to use new CQ type
     struct cuda_ah_info *cuda_ah;
     nvshmemi_efagda_device_key_t *lkeys;
     nvshmemi_efagda_device_key_t *rkeys;

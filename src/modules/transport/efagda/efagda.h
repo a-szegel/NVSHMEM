@@ -24,8 +24,8 @@ typedef struct {
     struct fi_efa_ops_gda *efa_gda_ops;
     struct fid_ep *ep;
     struct fid_cq *cq_ext;
-    struct efa_cq *cuda_cq;
-    struct efa_qp *cuda_qp;
+    nvshmemi_efagda_device_cq_t *cuda_cq;  // Updated to use new CQ type
+    nvshmemi_efagda_device_qp_t *cuda_qp;  // Updated to use new QP type
     struct cuda_ah_info *cuda_ah;
 
     // Device-side memory key tracking
