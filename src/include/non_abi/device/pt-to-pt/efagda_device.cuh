@@ -71,7 +71,7 @@
 
 // Prevent code reordering from both compiler and GPU
 __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void EFAGDA_MFENCE() {
-    __threadfence_block();
+    __threadfence_system();
 }
 
 __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_atomic_set(int *ptr, int val) {
@@ -97,15 +97,13 @@ __device__ efa_io_cdesc_common* cq_next_cqe_get(efa_cq* cq) {
     efa_io_cdesc_common* cqe = efa_get_cqe(cq, current_index);
 
     if (efa_cqe_is_pending(cqe, cq->phase)) {
-        uint32_t claimed_cnt = atomicCAS(&cq->consumed_cnt, old_consumed_cnt, old_consumed_cnt + 1);
-        if (claimed_cnt == old_consumed_cnt) {
-            __threadfence_system();
+        cq->consumed_cnt++;
+        __threadfence_system();
 
-            if (!((old_consumed_cnt + 1) & cq->queue_mask)) {
-                atomicXor(&cq->phase, 1); // atomic phase flip
-            }
-            return cqe;
+        if (!(cq->consumed_cnt & cq->queue_mask)) {
+			cq->phase = 1 - cq->phase;
         }
+        return cqe;
     }
 
     return nullptr;
@@ -114,6 +112,7 @@ __device__ efa_io_cdesc_common* cq_next_cqe_get(efa_cq* cq) {
 __device__ int efagda_cq_poll_next(efa_cq* cq, efa_io_cdesc_common** out_cqe) {
     efa_io_cdesc_common* cqe = cq_next_cqe_get(cq);
     if (!cqe) {
+        *out_cqe = NULL;
         return 0;
     }
 
@@ -217,6 +216,7 @@ __device__ int efagda_sq_init_wr(efa_qp* qp, enum efa_io_send_op_type op_type, u
     struct efa_io_tx_wqe *wqe = &qp->sq.curr_wqe;
 
     memset(wqe, 0, sizeof(*wqe));
+    __threadfence_system();
     EFA_SET(&wqe->meta.ctrl1, EFA_IO_TX_META_DESC_META_DESC, 1);
 	EFA_SET(&wqe->meta.ctrl1, EFA_IO_TX_META_DESC_OP_TYPE, op_type);
 	EFA_SET(&wqe->meta.ctrl2, EFA_IO_TX_META_DESC_PHASE, qp->sq.wq.phase);
@@ -343,7 +343,7 @@ __device__ int efagda_wr_set_sge(efa_qp *qp, uint32_t lkey, uint64_t addr, uint3
 
 	wqe = &qp->sq.curr_wqe;
 	wqe->meta.length = 1;
-
+    __threadfence_system();
 	op_type = EFA_GET(&wqe->meta.ctrl1, EFA_IO_TX_META_DESC_OP_TYPE);
 	switch (op_type) {
 	case EFA_IO_SEND:
@@ -368,6 +368,7 @@ __device__ int efagda_finalize_send_wr(efa_qp *qp)
     uint32_t sq_desc_offset;
 
     sq_desc_offset = (qp->sq.wq.pc & qp->sq.wq.queue_mask) * sizeof(*wqe);
+    __threadfence_system();
     memcpy(qp->sq.buf + sq_desc_offset, wqe, sizeof(*wqe));
 
     atomicAdd(&qp->sq.wq.wqes_posted, 1);
@@ -616,6 +617,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_quiet() {
         while (state->cuda_qp->sq.wq.wqes_completed < state->cuda_qp->sq.wq.wqes_posted) {
             efa_poll_cq(state->cuda_cq, 1, &wc, &result);
             if (result > 0) {
+                __threadfence_system();
                 if (wc.vendor_err != 0) {
                     printf("ERROR EFAGDA: pe=%d thread 0 got completion, wr_id=%lu, vendor_error=%lu, op_code=%lu\n",
                             state->my_pe, (unsigned long)wc.wr_id, (unsigned long)wc.vendor_err, (unsigned long)wc.opcode);
