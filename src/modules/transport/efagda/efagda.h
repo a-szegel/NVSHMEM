@@ -27,7 +27,8 @@ typedef struct {
     struct efa_cq *cuda_cq;
     struct efa_qp *cuda_qp;
     struct cuda_ah_info *cuda_ah;
-    int *device_lock;
+    int *device_tx_lock;
+    int *device_rx_lock;
 
     // Device-side memory key tracking
     std::vector<nvshmemi_efagda_device_key_t> device_lkeys;

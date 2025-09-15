@@ -540,12 +540,20 @@ static int nvshmemt_efagda_populate_device_state(nvshmem_transport_t t) {
     NVSHMEMI_NE_ERROR_JMP(status, cudaSuccess, NVSHMEMX_ERROR_INTERNAL, out, "cudaMemcpy for put_signal_seq_counter initialization failed.\n");
     device_state->put_signal_seq_counter = efagda_state->put_signal_seq_counter;
 
-    // Allocate lock in device memory
-    status = cudaMalloc(&efagda_state->device_lock, sizeof(int));
-    NVSHMEMI_NE_ERROR_JMP(status, cudaSuccess, NVSHMEMX_ERROR_INTERNAL, out, "cudaMalloc for lock failed.\n");
-    status = cudaMemset(efagda_state->device_lock, 0, sizeof(int));
-    NVSHMEMI_NE_ERROR_JMP(status, cudaSuccess, NVSHMEMX_ERROR_INTERNAL, out, "cudaMemset for lock failed.\n");
-    device_state->lock = efagda_state->device_lock;
+    // Allocate tx lock in device memory
+    status = cudaMalloc(&efagda_state->device_tx_lock, sizeof(int));
+    NVSHMEMI_NE_ERROR_JMP(status, cudaSuccess, NVSHMEMX_ERROR_INTERNAL, out, "cudaMalloc for tx lock failed.\n");
+    status = cudaMemset(efagda_state->device_tx_lock, 0, sizeof(int));
+    NVSHMEMI_NE_ERROR_JMP(status, cudaSuccess, NVSHMEMX_ERROR_INTERNAL, out, "cudaMemset for tx lock failed.\n");
+    device_state->tx_lock = efagda_state->device_tx_lock;
+
+    // Allocate rx lock in device memory
+    status = cudaMalloc(&efagda_state->device_rx_lock, sizeof(int));
+    NVSHMEMI_NE_ERROR_JMP(status, cudaSuccess, NVSHMEMX_ERROR_INTERNAL, out, "cudaMalloc for rx lock failed.\n");
+    status = cudaMemset(efagda_state->device_rx_lock, 0, sizeof(int));
+    NVSHMEMI_NE_ERROR_JMP(status, cudaSuccess, NVSHMEMX_ERROR_INTERNAL, out, "cudaMemset for rx lock failed.\n");
+    device_state->rx_lock = efagda_state->device_rx_lock;
+
 
     INFO(efagda_state->log_level, "EFA GDA: Populated device state with n_pes=%d, my_pe=%d\n", device_state->n_pes, device_state->my_pe);
 out:
@@ -692,11 +700,10 @@ static int nvshmemt_efagda_finalize(nvshmem_transport_t t) {
     efagda_state->device_lkeys.clear();
     efagda_state->device_rkeys.clear();
 
-    // Free device lock
-    // if (efagda_state->device_lock) {
-    //     cudaFree(efagda_state->device_lock);
-    //     efagda_state->device_lock = NULL;
-    // }
+    if (efagda_state->device_tx_lock)
+        cudaFree(efagda_state->device_tx_lock);
+    if (efagda_state->device_rx_lock)
+        cudaFree(efagda_state->device_rx_lock);
 
     status = nvshmemt_libfabric_finalize(t);
     return status;

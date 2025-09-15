@@ -71,7 +71,7 @@
 
 // Prevent code reordering from both compiler and GPU
 __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void EFAGDA_MFENCE() {
-    __threadfence_system();
+    __threadfence();
 }
 
 __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_atomic_set(int *ptr, int val) {
@@ -98,10 +98,10 @@ __device__ efa_io_cdesc_common* cq_next_cqe_get(efa_cq* cq) {
 
     if (efa_cqe_is_pending(cqe, cq->phase)) {
         cq->consumed_cnt++;
-        __threadfence_system();
+        __threadfence();
 
         if (!(cq->consumed_cnt & cq->queue_mask)) {
-			cq->phase = 1 - cq->phase;
+            cq->phase = 1 - cq->phase;
         }
         return cqe;
     }
@@ -112,7 +112,6 @@ __device__ efa_io_cdesc_common* cq_next_cqe_get(efa_cq* cq) {
 __device__ int efagda_cq_poll_next(efa_cq* cq, efa_io_cdesc_common** out_cqe) {
     efa_io_cdesc_common* cqe = cq_next_cqe_get(cq);
     if (!cqe) {
-        *out_cqe = NULL;
         return 0;
     }
 
@@ -216,7 +215,7 @@ __device__ int efagda_sq_init_wr(efa_qp* qp, enum efa_io_send_op_type op_type, u
     struct efa_io_tx_wqe *wqe = &qp->sq.curr_wqe;
 
     memset(wqe, 0, sizeof(*wqe));
-    __threadfence_system();
+    __threadfence();
     EFA_SET(&wqe->meta.ctrl1, EFA_IO_TX_META_DESC_META_DESC, 1);
 	EFA_SET(&wqe->meta.ctrl1, EFA_IO_TX_META_DESC_OP_TYPE, op_type);
 	EFA_SET(&wqe->meta.ctrl2, EFA_IO_TX_META_DESC_PHASE, qp->sq.wq.phase);
@@ -343,7 +342,8 @@ __device__ int efagda_wr_set_sge(efa_qp *qp, uint32_t lkey, uint64_t addr, uint3
 
 	wqe = &qp->sq.curr_wqe;
 	wqe->meta.length = 1;
-    __threadfence_system();
+    __threadfence();
+
 	op_type = EFA_GET(&wqe->meta.ctrl1, EFA_IO_TX_META_DESC_OP_TYPE);
 	switch (op_type) {
 	case EFA_IO_SEND:
@@ -368,20 +368,19 @@ __device__ int efagda_finalize_send_wr(efa_qp *qp)
     uint32_t sq_desc_offset;
 
     sq_desc_offset = (qp->sq.wq.pc & qp->sq.wq.queue_mask) * sizeof(*wqe);
-    __threadfence_system();
+    __threadfence();
     memcpy(qp->sq.buf + sq_desc_offset, wqe, sizeof(*wqe));
 
     atomicAdd(&qp->sq.wq.wqes_posted, 1);
-	atomicAdd(&qp->sq.wq.pc, 1);
+    qp->sq.wq.pc++;
 
 	if (!(qp->sq.wq.pc & qp->sq.wq.queue_mask))
-		atomicAdd(&qp->sq.wq.phase, 1);
+        qp->sq.wq.phase++;
 
-    atomicAdd(&qp->sq.wq.wqes_pending, 1);
+    qp->sq.wq.wqes_pending++;
     if (qp->sq.wq.wqes_pending == qp->sq.wq.max_batch) {
         __threadfence_system();
         *qp->sq.wq.db = qp->sq.wq.pc;
-
         qp->sq.wq.wqes_pending = 0;
     }
 
@@ -414,15 +413,14 @@ __device__ int efagda_post_recv_wr(efa_qp* qp, uint64_t addr, uint32_t length, u
     rq_desc_offset = (qp->rq.wq.pc & qp->rq.wq.queue_mask) * sizeof(wqe);
     memcpy(qp->rq.buf + rq_desc_offset, &wqe, sizeof(wqe));
 
-    atomicAdd(&qp->rq.wq.pc, 1);
+    qp->rq.wq.pc++;
     if (!(qp->rq.wq.pc & qp->rq.wq.queue_mask))
-        atomicAdd(&qp->rq.wq.phase, 1);
+        qp->rq.wq.phase++;
 
-    atomicAdd(&qp->rq.wq.wqes_pending, 1);
+    qp->rq.wq.wqes_pending++;
     if (qp->rq.wq.wqes_pending == qp->rq.wq.max_batch) {
-        __threadfence_system();
+        __threadfence();
         *qp->rq.wq.db = qp->rq.wq.pc;
-
         qp->rq.wq.wqes_pending = 0;
     }
 
@@ -434,7 +432,7 @@ __device__ void efagda_flush_recv_wrs(efa_qp *qp)
     if (!qp->rq.wq.wqes_pending)
         return
 
-    __threadfence_system();
+    __threadfence();
     *qp->rq.wq.db = qp->rq.wq.pc;
     qp->rq.wq.wqes_pending = 0;
 }
@@ -457,6 +455,7 @@ __device__ void efa_poll_cq(efa_cq* cq, int nwc, ibv_wc* wc, int* result)
     wc->src_qp = efagda_wc_read_src_qp(cqe);
     wc->wc_flags = 0;
     *result = 1;
+    __threadfence();
 }
 
 /************************************************************************
@@ -563,7 +562,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_rma_nbi(void *rptr
     int my_tid = nvshmemi_thread_id_in_threadgroup<SCOPE>();
     if (my_tid == 0) {
         nvshmemi_efagda_device_state_t *state = efagda_get_device_transport_state();
-        efagda_lock_acquire<NVSHMEMI_THREADGROUP_THREAD>(state->lock);
+        efagda_lock_acquire<NVSHMEMI_THREADGROUP_THREAD>(state->tx_lock);
 
         struct efa_qp *qp = state->cuda_qp;
         uint16_t ah;
@@ -598,7 +597,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_rma_nbi(void *rptr
         }
 
         efagda_flush_send_wrs(qp);
-        efagda_lock_release<NVSHMEMI_THREADGROUP_THREAD>(state->lock);
+        efagda_lock_release<NVSHMEMI_THREADGROUP_THREAD>(state->tx_lock);
     }
 
     nvshmemi_threadgroup_sync<SCOPE>();
@@ -610,24 +609,23 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_quiet() {
     int my_tid = nvshmemi_thread_id_in_threadgroup<SCOPE>();
     if (my_tid == 0) {
         nvshmemi_efagda_device_state_t *state = efagda_get_device_transport_state();
-        efagda_lock_acquire<NVSHMEMI_THREADGROUP_THREAD>(state->lock);
+        efagda_lock_acquire<NVSHMEMI_THREADGROUP_THREAD>(state->rx_lock);
         int result;
         ibv_wc wc;
 
-        while (state->cuda_qp->sq.wq.wqes_completed < state->cuda_qp->sq.wq.wqes_posted) {
+        while (state->cuda_qp->sq.wq.wqes_completed <
+               __nv_atomic_load_n(&state->cuda_qp->sq.wq.wqes_posted, __ATOMIC_ACQUIRE, __NV_THREAD_SCOPE_DEVICE)) {
             efa_poll_cq(state->cuda_cq, 1, &wc, &result);
             if (result > 0) {
-                __threadfence_system();
                 if (wc.vendor_err != 0) {
                     printf("ERROR EFAGDA: pe=%d thread 0 got completion, wr_id=%lu, vendor_error=%lu, op_code=%lu\n",
                             state->my_pe, (unsigned long)wc.wr_id, (unsigned long)wc.vendor_err, (unsigned long)wc.opcode);
                     __trap();
                 }
-
-                atomicAdd(&state->cuda_qp->sq.wq.wqes_completed, 1);
+                state->cuda_qp->sq.wq.wqes_completed++;
             }
         }
-       efagda_lock_release<NVSHMEMI_THREADGROUP_THREAD>(state->lock);
+       efagda_lock_release<NVSHMEMI_THREADGROUP_THREAD>(state->rx_lock);
     }
     nvshmemi_threadgroup_sync<SCOPE>();
 }
@@ -640,14 +638,10 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_put_signal(
     int my_tid = nvshmemi_thread_id_in_threadgroup<SCOPE>();
     if (my_tid == 0) {
         nvshmemi_efagda_device_state_t *state = efagda_get_device_transport_state();
-        efagda_lock_acquire<NVSHMEMI_THREADGROUP_THREAD>(state->lock);
+        efagda_lock_acquire<NVSHMEMI_THREADGROUP_THREAD>(state->tx_lock);
         struct efa_qp *qp = state->cuda_qp;
 
-        uint32_t imm_data, new_val;
-        do {
-            imm_data = *state->put_signal_seq_counter;
-            new_val = (imm_data + 1) & 0xFFFFFFF; // TODO Change to use #define
-        } while (atomicCAS(state->put_signal_seq_counter, imm_data, new_val) != imm_data);
+        *state->put_signal_seq_counter = (*state->put_signal_seq_counter + 1) & 0xFFFFFFF;
 
         uint16_t ah;
         uint16_t remote_qpn;
@@ -672,7 +666,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_put_signal(
 
             size_t transfer_size = efagda_cal_transfer_size(remaining_size, lchunk_size, rchunk_size);
 
-            efagda_init_rdma_write_imm_wr(qp, 0, rkey, raddr, imm_data);
+            efagda_init_rdma_write_imm_wr(qp, 0, rkey, raddr, *state->put_signal_seq_counter);
             efagda_wr_set_remote_addr(qp, ah, remote_qpn, remote_qkey);
             efagda_wr_set_sge(qp, lkey, laddr, transfer_size);
             efagda_finalize_send_wr(qp);
@@ -693,7 +687,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_put_signal(
         nvshmemt_efagda_signal_op_t signal_op;
         signal_op.type = 2; // NVSHMEMT_LIBFABRIC_MATCH
         signal_op.op = sig_op;
-        signal_op.sequence_count = imm_data;
+        signal_op.sequence_count = *state->put_signal_seq_counter;
         signal_op.target_addr = (void*)sig_raddr;
         signal_op.sig_val = signal;
         signal_op.num_writes = num_writes;
@@ -709,7 +703,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_put_signal(
         // a write w/imm after the atomic has been applied on the RX side.
         atomicAdd(&qp->sq.wq.wqes_posted, 1);
 
-        efagda_lock_release<NVSHMEMI_THREADGROUP_THREAD>(state->lock);
+        efagda_lock_release<NVSHMEMI_THREADGROUP_THREAD>(state->tx_lock);
     }
     nvshmemi_threadgroup_sync<SCOPE>();
 
