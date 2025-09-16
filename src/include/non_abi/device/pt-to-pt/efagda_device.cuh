@@ -536,7 +536,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void efagda_get_raddr_rkey(
         nvshmemi_efagda_device_key_t device_key = state->rkeys[idx];
         *out_raddr = raddr;
         *out_rkey = device_key.key;
-        *out_chunk_size = device_key.next_addr - addr;
+        *out_chunk_size = device_key.next_addr - roffset;
         return;
     }
 
