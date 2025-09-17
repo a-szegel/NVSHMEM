@@ -49,7 +49,8 @@
 #define GENMASK(h, l) \
 	(((~0UL) - (1UL << (l)) + 1) & (~0UL >> (BITS_PER_LONG - 1 - (h))))
 
-#define EFA_GET(ptr, mask) FIELD_GET(mask##_MASK, *(ptr))
+#define EFA_GET(ptr, mask) \
+    FIELD_GET(mask##_MASK, *(typeof(*ptr) volatile *)(ptr))
 
 #define EFA_SET(ptr, mask, value)                                              \
 	({                                                                     \
@@ -83,8 +84,7 @@ __device__ uint32_t efa_cq_get_current_index(const efa_cq* cq) {
 }
 
 __device__ int efa_cqe_is_pending(const efa_io_cdesc_common* cqe_common, int phase) {
-    volatile uint8_t *cqe_flag = (volatile uint8_t *)(&cqe_common->flags);
-    return EFA_GET(cqe_flag, EFA_IO_CDESC_COMMON_PHASE) == phase;
+    return EFA_GET(&cqe_common->flags, EFA_IO_CDESC_COMMON_PHASE) == phase;
 }
 
 __device__ efa_io_cdesc_common* efa_get_cqe(efa_cq* cq, int entry) {
