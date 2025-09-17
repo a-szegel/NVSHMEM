@@ -366,10 +366,18 @@ __device__ int efagda_finalize_send_wr(efa_qp *qp)
 {
     struct efa_io_tx_wqe *wqe = &qp->sq.curr_wqe;
     uint32_t sq_desc_offset;
+    uint64_t *src;
+    uint64_t *dst;
 
+    src = (uint64_t *)wqe;
     sq_desc_offset = (qp->sq.wq.pc & qp->sq.wq.queue_mask) * sizeof(*wqe);
+    dst = (uint64_t *)(qp->sq.buf + sq_desc_offset);
+
+    // Ensure all writes finish to global memory before we copy from global memory to the device
     __threadfence();
-    memcpy(qp->sq.buf + sq_desc_offset, wqe, sizeof(*wqe));
+
+    for (int i = 0 ; i < 8 ; i++)
+        dst[i] = src[i];
 
     atomicAdd(&qp->sq.wq.wqes_posted, 1);
     qp->sq.wq.pc++;
