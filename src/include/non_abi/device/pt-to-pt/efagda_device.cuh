@@ -14,6 +14,7 @@
 #include "non_abi/device/common/nvshmemi_common_device.cuh"
 #include "non_abi/device/threadgroup/nvshmemi_common_device_defines.cuh"
 #include "device_host_transport/nvshmem_common_efagda.h"
+#include "non_abi/device/pt-to-pt/libfabric_efagda_common.h"
 #include <stdio.h>
 
 #include <limits.h>
@@ -630,7 +631,19 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_quiet() {
                             state->my_pe, (unsigned long)wc.wr_id, (unsigned long)wc.vendor_err, (unsigned long)wc.opcode);
                     __trap();
                 }
+
                 state->cuda_qp->sq.wq.wqes_completed++;
+                if (wc.opcode == EFAGDA_WC_RECV_RDMA_WITH_IMM) {
+                    /* wc.imm_data is in big-endian */
+                    uint32_t imm_data = BSWAP32(wc.imm_data);
+                    /* Make sure this is an ack. */
+                    assert((imm_data >> NVSHMEM_STAGED_AMO_PUT_SIGNAL_SEQ_CNTR_BIT_SHIFT) ==
+                            NVSHMEMT_LIBFABRIC_IMM_STAGED_ATOMIC_ACK);
+                    uint32_t seq_num = imm_data & NVSHMEM_STAGED_AMO_PUT_SIGNAL_SEQ_CNTR_BIT_MASK;
+                    if (seq_num != NVSHMEM_STAGED_AMO_SEQ_NUM) {
+                        state->put_signal_seq_counter->return_acked_seq_num(seq_num);
+                    }
+                }
             }
         }
        efagda_lock_release<NVSHMEMI_THREADGROUP_THREAD>(state->rx_lock);
@@ -649,7 +662,11 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_put_signal(
         efagda_lock_acquire<NVSHMEMI_THREADGROUP_THREAD>(state->tx_lock);
         struct efa_qp *qp = state->cuda_qp;
 
-        *state->put_signal_seq_counter = (*state->put_signal_seq_counter + 1) & 0xFFFFFFF;
+        uint32_t seq_num = state->put_signal_seq_counter->next_seq_num();
+        if (!state->put_signal_seq_counter->acquire_seq_num(seq_num)) {
+            /* TODO Here we need to poll the completion queue until the sequence number is available */
+            assert(0);
+        }
 
         uint16_t ah;
         uint16_t remote_qpn;
@@ -674,7 +691,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_put_signal(
 
             size_t transfer_size = efagda_cal_transfer_size(remaining_size, lchunk_size, rchunk_size);
 
-            efagda_init_rdma_write_imm_wr(qp, 0, rkey, raddr, *state->put_signal_seq_counter);
+            efagda_init_rdma_write_imm_wr(qp, 0, rkey, raddr, seq_num);
             efagda_wr_set_remote_addr(qp, ah, remote_qpn, remote_qkey);
             efagda_wr_set_sge(qp, lkey, laddr, transfer_size);
             efagda_finalize_send_wr(qp);
@@ -695,7 +712,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_efagda_put_signal(
         nvshmemt_efagda_signal_op_t signal_op;
         signal_op.type = 2; // NVSHMEMT_LIBFABRIC_MATCH
         signal_op.op = sig_op;
-        signal_op.sequence_count = *state->put_signal_seq_counter;
+        signal_op.sequence_count = seq_num;
         signal_op.target_addr = (void*)sig_raddr;
         signal_op.sig_val = signal;
         signal_op.num_writes = num_writes;
