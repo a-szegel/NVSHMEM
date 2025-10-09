@@ -30,9 +30,11 @@
 #define NVSHMEMT_LIBFABRIC_DOMAIN_LEN 32
 #define NVSHMEMT_LIBFABRIC_PROVIDER_LEN 32
 #define NVSHMEMT_LIBFABRIC_EP_LEN 128
+/* Constrainted by memhandle size */
+#define NVSHMEMT_LIBFABRIC_MAX_NIC_PER_PE 10
 
 /* one EP for all proxy ops, one for host ops */
-#define NVSHMEMT_LIBFABRIC_DEFAULT_NUM_EPS 2
+#define NVSHMEMT_LIBFABRIC_NUM_THREAD_COMPLETION_GROUPS 2
 #define NVSHMEMT_LIBFABRIC_PROXY_EP_IDX 1
 #define NVSHMEMT_LIBFABRIC_HOST_EP_IDX 0
 
@@ -190,7 +192,9 @@ typedef struct {
     nvshmemt_libfabric_endpoint_seq_counter_t put_signal_seq_counter;
     std::unordered_map<uint64_t, std::pair<nvshmemt_libfabric_gdr_op_ctx_t *, int>>
         *proxy_put_signal_comp_map;
-} nvshmemt_libfabric_endpoint_t;
+    int nic_idx;
+    int group_idx;
+} nvshmemt_libfabric_tx_progress_group_t;
 
 typedef enum {
     NVSHMEMT_LIBFABRIC_PROVIDER_VERBS = 0,
@@ -217,6 +221,10 @@ class threadSafeOpQueue {
     std::deque<void *> recv;
 
    public:
+    threadSafeOpQueue() = default;
+    threadSafeOpQueue(const threadSafeOpQueue&) = delete;
+    threadSafeOpQueue& operator=(const threadSafeOpQueue&) = delete;
+
     void *getNextSend() {
         void *elem;
         send_mutex.lock();
@@ -277,13 +285,17 @@ class threadSafeOpQueue {
     }
 };
 
+// TODO Put ThreadSafe Queue in here
 typedef struct {
-    struct fi_info *prov_info;
     struct fi_info *all_prov_info;
-    struct fid_fabric *fabric;
-    struct fid_domain *domain;
-    struct fid_av *addresses[NVSHMEMT_LIBFABRIC_DEFAULT_NUM_EPS];
-    nvshmemt_libfabric_endpoint_t *eps;
+    std::vector<struct fi_info *> prov_infos;
+    std::vector<struct fid_fabric *> fabrics;
+    std::vector<struct fid_domain *> domains;
+    std::vector<struct fid_av *> addresses[NVSHMEMT_LIBFABRIC_NUM_THREAD_COMPLETION_GROUPS];
+
+    // todo rename to tx_group
+    std::vector<nvshmemt_libfabric_tx_progress_group_t *> eps[NVSHMEMT_LIBFABRIC_NUM_THREAD_COMPLETION_GROUPS];
+
     /* local_mr is used only for consistency ops. */
     struct fid_mr *local_mr[2];
     uint64_t local_mr_key[2];
@@ -294,15 +306,21 @@ typedef struct {
     nvshmemt_libfabric_provider provider;
     int log_level;
     struct nvshmemi_cuda_fn_table *table;
-    size_t num_sends;
-    void *send_buf;
-    size_t num_recvs;
-    void *recv_buf;
-    struct fid_mr *mr;
     struct transport_mem_handle_info_cache *cache;
+
+    /* Required for multi-rail */
+    int max_nic_per_pe;
+    int num_selected_devs;
+    int cur_nic_idx[NVSHMEMT_LIBFABRIC_NUM_THREAD_COMPLETION_GROUPS];
+
+    /* Required for staged_amo */
+    std::vector<threadSafeOpQueue*> op_queue;
+    std::vector<struct fid_mr *> mr;
+    std::vector<void *> send_buf;
+    std::vector<void *> recv_buf;
+    std::vector<struct fid_mr *> mr_staged_amo_ack;
     void **remote_addr_staged_amo_ack;
     uint64_t *rkey_staged_amo_ack;
-    struct fid_mr *mr_staged_amo_ack;
 } nvshmemt_libfabric_state_t;
 
 typedef enum {
@@ -329,7 +347,7 @@ typedef struct {
 
 typedef struct {
     void *buf;
-    nvshmemt_libfabric_mem_handle_ep_t hdls[2];
+    nvshmemt_libfabric_mem_handle_ep_t hdls[2*NVSHMEMT_LIBFABRIC_MAX_NIC_PER_PE];
 } nvshmemt_libfabric_mem_handle_t;
 
 typedef struct nvshmemt_libfabric_gdr_send_p_op {
@@ -370,7 +388,7 @@ typedef struct nvshmemt_libfabric_gdr_ret_amo_op {
 
 struct nvshmemt_libfabric_gdr_op_ctx {
     nvshmemt_libfabric_recv_t type;
-    nvshmemt_libfabric_endpoint_t *ep;
+    nvshmemt_libfabric_tx_progress_group_t *ep;
     union {
         nvshmemt_libfabric_gdr_send_p_op_t p_op;
         nvshmemt_libfabric_gdr_send_amo_op_t send_amo;
