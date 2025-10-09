@@ -64,6 +64,8 @@ static bool use_gdrcopy = false;
 #define NVSHMEM_STAGED_AMO_WIREDATA_SIZE sizeof(nvshmemt_libfabric_gdr_op_ctx_t) - sizeof(struct fi_context2) - sizeof(fi_addr_t)
 
 static bool use_staged_atomics = false;
+static bool use_auto_progress = false;
+
 threadSafeOpQueue nvshmemtLibfabricOpQueue;
 std::mutex gdrRecvMutex;
 
@@ -137,7 +139,7 @@ out:
     return status;
 }
 
-static int nvshmemt_libfabric_progress(nvshmem_transport_t transport, int is_proxy) {
+static int nvshmemt_libfabric_auto_progress(nvshmem_transport_t transport, int is_proxy) {
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)transport->state;
     nvshmemt_libfabric_endpoint_t *ep;
     int status;
@@ -214,7 +216,19 @@ static int nvshmemt_libfabric_progress(nvshmem_transport_t transport, int is_pro
     return 0;
 }
 
-static inline int try_again(nvshmem_transport_t transport, int *status, uint64_t *num_retries, int is_proxy) {
+static int nvshmemt_libfabric_slow_progress(nvshmem_transport_t transport, int is_proxy) {
+    int status;
+    for (int i = 0; i < NVSHMEMT_LIBFABRIC_DEFAULT_NUM_EPS; i++) {
+        status = nvshmemt_libfabric_auto_progress(transport, i);
+        NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "Error in progress: %d.\n",
+                              status);
+    }
+out:
+    return status;
+}
+
+static inline int try_again(nvshmem_transport_t transport, int *status, uint64_t *num_retries,
+                            int is_proxy) {
     if (likely(*status == 0)) {
         return 0;
     }
@@ -227,7 +241,7 @@ static inline int try_again(nvshmem_transport_t transport, int *status, uint64_t
             return 0;
         }
         (*num_retries)++;
-        *status = nvshmemt_libfabric_progress(transport, is_proxy);
+        *status = transport->host_ops.progress(transport, is_proxy);
     }
 
     if (*status != 0) {
@@ -570,7 +584,7 @@ static int nvshmemt_libfabric_quiet(struct nvshmem_transport *tcurr, int pe, int
             if (completed + ep->completed_staged_atomics == submitted)
                 break;
             else {
-                if (nvshmemt_libfabric_progress(tcurr, is_proxy)) {
+                if (tcurr->host_ops.progress(tcurr, is_proxy)) {
                     status = NVSHMEMX_ERROR_INTERNAL;
                     break;
                 }
@@ -1895,7 +1909,8 @@ static int nvshmemt_libfabric_finalize(nvshmem_transport_t transport) {
     return 0;
 }
 
-static int nvshmemi_libfabric_init_state(nvshmem_transport_t t, nvshmemt_libfabric_state_t *state) {
+static int nvshmemi_libfabric_init_state(nvshmem_transport_t t, nvshmemt_libfabric_state_t *state,
+                                         struct nvshmemi_options_s *options) {
     struct fi_info info;
     struct fi_tx_attr tx_attr;
     struct fi_rx_attr rx_attr;
@@ -1945,20 +1960,44 @@ static int nvshmemi_libfabric_init_state(nvshmem_transport_t t, nvshmemt_libfabr
         info.mode |= FI_CONTEXT2;
     }
 
-    /* Be thread safe at the level of the endpoint completion context. */
-    domain_attr.threading = FI_THREAD_COMPLETION;
-
+    ep_attr.type = FI_EP_RDM; /* Reliable datagrams */
     /* Require completion RMA completion at target for correctness of quiet */
     info.tx_attr->op_flags = FI_DELIVERY_COMPLETE;
 
-    ep_attr.type = FI_EP_RDM;  // Reliable datagrams
+    /* nvshmemt_libfabric_auto_progress relaxes threading requirement */
+    domain_attr.threading = FI_THREAD_COMPLETION;
+    info.domain_attr->data_progress = FI_PROGRESS_AUTO;
 
     status = fi_getinfo(FI_VERSION(NVSHMEMT_LIBFABRIC_MAJ_VER, NVSHMEMT_LIBFABRIC_MIN_VER), NULL,
                         NULL, 0, &info, &returned_fabrics);
 
-    NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
-                          "No providers matched fi_getinfo query: %d: %s\n", status,
-                          fi_strerror(status * -1));
+    /*
+     * 1. Ensure that at least one fabric was returned
+     * 2. Make sure returned fabric matches the name of selected provider
+     *
+     * This has an assumption that the provided fabric option
+     * options.LIBFABRIC_PROVIDER will be a substr of the returned fabric
+     * name
+     */
+    if (!status && strstr(returned_fabrics->fabric_attr->name, options->LIBFABRIC_PROVIDER)) {
+        use_auto_progress = true;
+    } else {
+        fi_freeinfo(returned_fabrics);
+
+        /*
+         * Fallback to FI_PROGRESS_MANUAL path
+         * nvshmemt_libfabric_slow_progress requires FI_THREAD_SAFE
+         */
+        domain_attr.threading = FI_THREAD_SAFE;
+        info.domain_attr->data_progress = FI_PROGRESS_MANUAL;
+        status = fi_getinfo(FI_VERSION(NVSHMEMT_LIBFABRIC_MAJ_VER, NVSHMEMT_LIBFABRIC_MIN_VER),
+                            NULL, NULL, 0, &info, &returned_fabrics);
+
+        NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+                              "No providers matched fi_getinfo query: %d: %s\n", status,
+                              fi_strerror(status * -1));
+    }
+
     state->all_prov_info = returned_fabrics;
     for (current_fabric = returned_fabrics; current_fabric != NULL;
          current_fabric = current_fabric->next) {
@@ -2078,7 +2117,6 @@ int nvshmemt_init(nvshmem_transport_t *t, struct nvshmemi_cuda_fn_table *table, 
     transport->host_ops.quiet = nvshmemt_libfabric_quiet;
     transport->host_ops.finalize = nvshmemt_libfabric_finalize;
     transport->host_ops.show_info = nvshmemt_libfabric_show_info;
-    transport->host_ops.progress = nvshmemt_libfabric_progress;
     transport->host_ops.enforce_cst = nvshmemt_libfabric_enforce_cst;
 
     transport->attr = NVSHMEM_TRANSPORT_ATTR_CONNECTED;
@@ -2196,11 +2234,16 @@ int nvshmemt_init(nvshmem_transport_t *t, struct nvshmemi_cuda_fn_table *table, 
 #undef NVSHMEMI_SET_ENV_VAR
 
     /* Prepare fabric state information. */
-    status = nvshmemi_libfabric_init_state(transport, libfabric_state);
+    status = nvshmemi_libfabric_init_state(transport, libfabric_state, &options);
     if (status) {
         NVSHMEMI_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out_clean,
                            "Failed to initialize the libfabric state.\n");
     }
+
+    if (use_auto_progress)
+        transport->host_ops.progress = nvshmemt_libfabric_auto_progress;
+    else
+        transport->host_ops.progress = nvshmemt_libfabric_slow_progress;
 
     *t = transport;
 out:
