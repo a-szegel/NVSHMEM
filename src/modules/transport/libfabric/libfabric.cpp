@@ -1055,8 +1055,6 @@ static int nvshmemt_libfabric_enforce_cst(struct nvshmem_transport *tcurr) {
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)tcurr->state;
     uint64_t num_retries = 0;
     int status;
-    int target_ep;
-    int mype = tcurr->my_pe;
 
 #ifdef NVSHMEM_USE_GDRCOPY
     if (use_gdrcopy) {
@@ -1078,7 +1076,6 @@ static int nvshmemt_libfabric_enforce_cst(struct nvshmem_transport *tcurr) {
 skip:
 #endif
 
-    target_ep = mype * NVSHMEMT_LIBFABRIC_DEFAULT_NUM_EPS + NVSHMEMT_LIBFABRIC_PROXY_EP_IDX;
     do {
         struct fi_msg_rma msg;
         struct iovec l_iov;
@@ -1086,9 +1083,9 @@ skip:
         void *desc = libfabric_state->local_mr_desc[NVSHMEMT_LIBFABRIC_PROXY_EP_IDX];
         uint64_t flags = 0;
 
-        memset(&msg, 0, sizeof(struct fi_msg_rma));
-        memset(&l_iov, 0, sizeof(struct iovec));
-        memset(&r_iov, 0, sizeof(struct fi_rma_iov));
+    memset(&msg, 0, sizeof(struct fi_msg_rma));
+    memset(&l_iov, 0, sizeof(struct iovec));
+    memset(&r_iov, 0, sizeof(struct fi_rma_iov));
 
         l_iov.iov_base = libfabric_state->local_mem_ptr;
         l_iov.iov_len = 8;
@@ -1097,13 +1094,13 @@ skip:
         r_iov.len = 8;
         r_iov.key = libfabric_state->local_mr_key[NVSHMEMT_LIBFABRIC_PROXY_EP_IDX];
 
-        msg.msg_iov = &l_iov;
-        msg.desc = &desc;
-        msg.iov_count = 1;
-        msg.rma_iov = &r_iov;
-        msg.rma_iov_count = 1;
-        msg.context = NULL;
-        msg.data = 0;
+    msg.msg_iov = &l_iov;
+    msg.desc = &desc;
+    msg.iov_count = 1;
+    msg.rma_iov = &r_iov;
+    msg.rma_iov_count = 1;
+    msg.context = NULL;
+    msg.data = 0;
 
         if (libfabric_state->prov_info->caps & FI_FENCE) flags |= FI_FENCE;
 
