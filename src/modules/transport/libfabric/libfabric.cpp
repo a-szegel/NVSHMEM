@@ -66,6 +66,14 @@ static bool use_gdrcopy = false;
 static bool use_staged_atomics = false;
 static bool use_auto_progress = false;
 
+/*
+ * Break if someone tries to change the meaning of these
+ * enums. They correspond nicely to is_proxy, so we can
+ * directly use is_proxy in the critical path.
+ */
+static_assert(NVSHMEMT_LIBFABRIC_HOST_EP_IDX == 0);
+static_assert(NVSHMEMT_LIBFABRIC_PROXY_EP_IDX == 1);
+
 threadSafeOpQueue nvshmemtLibfabricOpQueue;
 std::mutex gdrRecvMutex;
 
@@ -141,14 +149,8 @@ out:
 
 static int nvshmemt_libfabric_auto_progress(nvshmem_transport_t transport, int is_proxy) {
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)transport->state;
-    nvshmemt_libfabric_endpoint_t *ep;
+    nvshmemt_libfabric_endpoint_t *ep = &libfabric_state->eps[is_proxy];
     int status;
-
-    if (is_proxy) {
-        ep = &libfabric_state->eps[NVSHMEMT_LIBFABRIC_PROXY_EP_IDX];
-    } else {
-        ep = &libfabric_state->eps[NVSHMEMT_LIBFABRIC_HOST_EP_IDX];
-    }
 
     uint64_t cnt = fi_cntr_readerr(ep->counter);
     if (cnt > 0) {
@@ -561,14 +563,8 @@ out:
 
 static int nvshmemt_libfabric_quiet(struct nvshmem_transport *tcurr, int pe, int is_proxy) {
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)tcurr->state;
-    nvshmemt_libfabric_endpoint_t *ep;
+    nvshmemt_libfabric_endpoint_t *ep = &libfabric_state->eps[is_proxy];
     int status = 0;
-
-    if (is_proxy) {
-        ep = &libfabric_state->eps[NVSHMEMT_LIBFABRIC_PROXY_EP_IDX];
-    } else {
-        ep = &libfabric_state->eps[NVSHMEMT_LIBFABRIC_HOST_EP_IDX];
-    }
 
     if (likely(libfabric_state->prov_info->domain_attr->control_progress == FI_PROGRESS_MANUAL) ||
         (libfabric_state->prov_info->domain_attr->data_progress == FI_PROGRESS_MANUAL) ||
@@ -624,21 +620,14 @@ static int nvshmemt_libfabric_rma_impl(struct nvshmem_transport *tcurr, int pe, 
     uint64_t num_retries = 0;
     int status = 0;
     int target_ep;
-    int ep_idx = 0;
     void *context = NULL;
 
     memset(&p_op_l_iov, 0, sizeof(struct iovec));
     memset(&p_op_msg, 0, sizeof(struct fi_msg_rma));
     memset(&p_op_r_iov, 0, sizeof(struct fi_rma_iov));
 
-    if (is_proxy) {
-        ep_idx = NVSHMEMT_LIBFABRIC_PROXY_EP_IDX;
-    } else {
-        ep_idx = NVSHMEMT_LIBFABRIC_HOST_EP_IDX;
-    }
-
-    ep = &libfabric_state->eps[ep_idx];
-    target_ep = pe * NVSHMEMT_LIBFABRIC_DEFAULT_NUM_EPS + ep_idx;
+    ep = &libfabric_state->eps[is_proxy];
+    target_ep = pe * NVSHMEMT_LIBFABRIC_DEFAULT_NUM_EPS + is_proxy;
 
     if (libfabric_state->provider == NVSHMEMT_LIBFABRIC_PROVIDER_EFA) {
         nvshmemt_libfabric_gdr_op_ctx_t *gdr_ctx;
@@ -651,8 +640,8 @@ static int nvshmemt_libfabric_rma_impl(struct nvshmem_transport *tcurr, int pe, 
         context = &gdr_ctx->ofi_context;
     }
 
-    remote_handle = &((nvshmemt_libfabric_mem_handle_t *)remote->handle)->hdls[ep_idx];
-    local_handle = &((nvshmemt_libfabric_mem_handle_t *)local->handle)->hdls[ep_idx];
+    remote_handle = &((nvshmemt_libfabric_mem_handle_t *)remote->handle)->hdls[is_proxy];
+    local_handle = &((nvshmemt_libfabric_mem_handle_t *)local->handle)->hdls[is_proxy];
     op_size = bytesdesc.elembytes * bytesdesc.nelems;
 
     if (verb.desc == NVSHMEMI_OP_P) {
@@ -747,17 +736,11 @@ static int nvshmemt_libfabric_gdr_amo(struct nvshmem_transport *transport, int p
     nvshmemt_libfabric_endpoint_t *ep;
     nvshmemt_libfabric_gdr_op_ctx_t *amo;
     uint64_t num_retries = 0;
-    int target_ep, ep_idx;
+    int target_ep;
     int status = 0;
 
-    if (is_proxy) {
-        ep_idx = NVSHMEMT_LIBFABRIC_PROXY_EP_IDX;
-    } else {
-        ep_idx = NVSHMEMT_LIBFABRIC_HOST_EP_IDX;
-    }
-
-    ep = &libfabric_state->eps[ep_idx];
-    target_ep = pe * NVSHMEMT_LIBFABRIC_DEFAULT_NUM_EPS + ep_idx;
+    ep = &libfabric_state->eps[is_proxy];
+    target_ep = pe * NVSHMEMT_LIBFABRIC_DEFAULT_NUM_EPS + is_proxy;
 
     do {
         amo = (nvshmemt_libfabric_gdr_op_ctx_t *)nvshmemtLibfabricOpQueue.getNextSend();
@@ -812,7 +795,6 @@ static int nvshmemt_libfabric_amo(struct nvshmem_transport *transport, int pe, v
     uint64_t num_retries = 0;
     int target_ep;
     int status = 0;
-    int ep_idx;
 
     memset(&amo_msg, 0, sizeof(struct fi_msg_atomic));
     memset(&fi_local_iov, 0, sizeof(struct fi_ioc));
@@ -820,19 +802,14 @@ static int nvshmemt_libfabric_amo(struct nvshmem_transport *transport, int pe, v
     memset(&fi_ret_iov, 0, sizeof(struct fi_ioc));
     memset(&fi_remote_iov, 0, sizeof(struct fi_rma_ioc));
 
-    if (is_proxy) {
-        ep_idx = NVSHMEMT_LIBFABRIC_PROXY_EP_IDX;
-    } else {
-        ep_idx = NVSHMEMT_LIBFABRIC_HOST_EP_IDX;
-    }
 
-    ep = &libfabric_state->eps[ep_idx];
-    target_ep = pe * NVSHMEMT_LIBFABRIC_DEFAULT_NUM_EPS + ep_idx;
+    ep = &libfabric_state->eps[is_proxy];
+    target_ep = pe * NVSHMEMT_LIBFABRIC_DEFAULT_NUM_EPS + is_proxy;
 
     remote_handle =
-        &((nvshmemt_libfabric_mem_handle_t *)remote->remote_memdesc.handle)->hdls[ep_idx];
+        &((nvshmemt_libfabric_mem_handle_t *)remote->remote_memdesc.handle)->hdls[is_proxy];
     if (verb.desc > NVSHMEMI_AMO_END_OF_NONFETCH) {
-        local_handle = &((nvshmemt_libfabric_mem_handle_t *)remote->ret_handle)->hdls[ep_idx];
+        local_handle = &((nvshmemt_libfabric_mem_handle_t *)remote->ret_handle)->hdls[is_proxy];
     }
 
     if (bytesdesc.elembytes == 8) {
@@ -957,17 +934,12 @@ static int nvshmemt_libfabric_gdr_signal(struct nvshmem_transport *transport, in
     nvshmemt_libfabric_gdr_op_ctx_t *context;
     nvshmemt_libfabric_gdr_signal_op_t *signal;
     uint64_t num_retries = 0;
-    int target_ep, ep_idx;
+    int target_ep;
     int status = 0;
 
-    if (is_proxy) {
-        ep_idx = NVSHMEMT_LIBFABRIC_PROXY_EP_IDX;
-    } else {
-        ep_idx = NVSHMEMT_LIBFABRIC_HOST_EP_IDX;
-    }
 
-    ep = &libfabric_state->eps[ep_idx];
-    target_ep = pe * NVSHMEMT_LIBFABRIC_DEFAULT_NUM_EPS + ep_idx;
+    ep = &libfabric_state->eps[is_proxy];
+    target_ep = pe * NVSHMEMT_LIBFABRIC_DEFAULT_NUM_EPS + is_proxy;
 
     static_assert(sizeof(nvshmemt_libfabric_gdr_op_ctx) >= sizeof(nvshmemt_libfabric_gdr_signal_op_t));
     do {
@@ -1014,15 +986,7 @@ int nvshmemt_put_signal_unordered(struct nvshmem_transport *tcurr, int pe, rma_v
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)tcurr->state;
     int status;
     uint32_t sequence_count = 0;
-    int ep_idx;
-
-    if (is_proxy) {
-        ep_idx = NVSHMEMT_LIBFABRIC_PROXY_EP_IDX;
-    } else {
-        ep_idx = NVSHMEMT_LIBFABRIC_HOST_EP_IDX;
-    }
-
-    nvshmemt_libfabric_endpoint_t &ep = libfabric_state->eps[ep_idx];
+    nvshmemt_libfabric_endpoint_t &ep = libfabric_state->eps[is_proxy];
 
     /* Get sequence number for this put-signal, with retry */
     uint64_t num_retries = 0;
