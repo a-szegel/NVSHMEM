@@ -209,7 +209,7 @@ int nvshmemi_get_devices_by_distance(int *device_arr, int max_dev_per_pe,
                             "Unable to allocate memory for PE/NIC Mapping.\n");
     for (pe_id = 0; pe_id < n_pes_node; pe_id++) {
         for (dev_id = 0; dev_id < max_dev_per_pe; dev_id++) {
-            pe_device_distance[pe_id * max_dev_per_pe + dev_id] = PATH_COUNT;
+            pe_device_distance[pe_id * max_dev_per_pe + dev_id] = PATH_SYS;
         }
     }
 
@@ -438,6 +438,11 @@ out:
 int nvshmemi_build_transport_map(nvshmemi_state_t *state) {
     int status = 0;
     int *local_map = NULL;
+
+    if (state->transport_map != NULL) {
+        free(state->transport_map);
+        state->transport_map = NULL;
+    }
 
     state->transport_map = (int *)calloc(state->npes * state->npes, sizeof(int));
     NVSHMEMI_NULL_ERROR_JMP(state->transport_map, status, NVSHMEMX_ERROR_OUT_OF_MEMORY, out,
