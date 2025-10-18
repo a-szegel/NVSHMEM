@@ -32,7 +32,7 @@ try:
     import mpi4py.MPI as mpi
     from mpi4py.MPI import Comm
     _mpi4py_enabled = True
-except ImportError:
+except (ImportError, RuntimeError):
     Comm = None
     _mpi4py_enabled = False
 
@@ -300,6 +300,8 @@ def finalize() -> None:
     # Cybind converts the success status code to NoneType
     if fini_status != None:
         raise NvshmemError("Failed to finalize Hostlib")
+
+    nvshmem.core._internal_tracking._is_initialized["status"] = InternalInitStatus.DE_INITIALIZED
         
 def module_init(mod: NvshmemKernelObject) -> None:
     """

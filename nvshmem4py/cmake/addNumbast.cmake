@@ -38,8 +38,9 @@ function(AddNumbast GIT_TAG)
 
     # Path to install libastcnopy.so
     set(ASTCANOPY_CMAKE_INSTALL_PREFIX "${ASSET_DIR}/ast_canopy/install")
+    message(STATUS "ASTCANOPY_CMAKE_INSTALL_PREFIX: $ENV{LD_LIBRARY_PATH}")
     set(NUMBAST_LD_LIBRARY_PATH "LD_LIBRARY_PATH=${ASTCANOPY_CMAKE_INSTALL_PREFIX}/lib:$ENV{LD_LIBRARY_PATH}")
-    set(NUMBAST_COMMAND "env" "${NUMBAST_LD_LIBRARY_PATH}" "${VENV_PYTHON_EXECUTABLE}" "-m" "numbast" "--cfg-path" "${ASSET_DIR}/numbast/config_nvshmem.yml" "--output-dir" "${NUMBAST_OUTPUT_DIR}")
+    set(NUMBAST_COMMAND "env" "${NUMBAST_LD_LIBRARY_PATH}" "${VENV_PYTHON_EXECUTABLE}" "-m" "numbast" "--cfg-path" "${ASSET_DIR}/numbast/config_nvshmem.yml" "--output-dir" "${NUMBAST_OUTPUT_DIR}" "--bypass-parse-error" "true")
     
     # High Level Bindings Settings
     set(HIGH_LEVEL_BINDINGS_OUTPUT_DIR ${NUMBAST_OUTPUT_DIR}/high_level/)
@@ -65,8 +66,9 @@ function(AddNumbast GIT_TAG)
         COMMAND mkdir -p ${OUTPUT_DIR}
         COMMAND touch ${OUTPUT_DIR}/clean.txt
         COMMENT "Cleaning Numbast repository"
+        DEPENDS get_cybind_output
     )
-
+    
     # Step 1: Clone the Numbast repository
     add_custom_target(
         clone_${PACKAGE_NAME}
@@ -88,6 +90,9 @@ function(AddNumbast GIT_TAG)
         COMMAND ${Python3_EXECUTABLE} -m venv ${VENV_DIR}
         COMMAND ${VENV_PYTHON_EXECUTABLE} -m pip install --upgrade pip
         COMMAND ${VENV_PYTHON_EXECUTABLE} -m pip install -r ${CMAKE_SOURCE_DIR}/nvshmem4py/requirements_build.txt
+        COMMAND ${VENV_PYTHON_EXECUTABLE} -m pip install numba-cuda==0.20.0 --no-deps
+        COMMAND ${VENV_PYTHON_EXECUTABLE} -m pip install cuda-bindings
+        COMMAND ${VENV_PYTHON_EXECUTABLE} -m pip install cuda-core
 	COMMAND env PYTHON_EXECUTABLE=${VENV_PYTHON_EXECUTABLE} ASTCANOPY_INSTALL_PATH=${ASTCANOPY_CMAKE_INSTALL_PREFIX} ${BINDGEN_TOOL_REPO}/ast_canopy/build.sh
         COMMAND ${VENV_PYTHON_EXECUTABLE} -m pip install -e ${BINDGEN_TOOL_REPO}/numbast/
         WORKING_DIRECTORY ${WORKDIR}

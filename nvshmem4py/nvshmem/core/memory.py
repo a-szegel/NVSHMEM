@@ -34,6 +34,9 @@ def _free_all_buffers() -> None:
 
     Logs each deallocation for debugging or auditing purposes.
     """
+    if not _is_initialized["status"] == InternalInitStatus.INITIALIZED:
+        logger.warning("NVSHMEM Library is not initialized. Cannot free buffers")
+        return
     found_leak = False
     for key in sorted(_mr_references.keys()):
         mr = _mr_references[key]
@@ -105,7 +108,8 @@ def free(buffer: Buffer) -> None:
     Note that this is a collective. All participating PEs must call ``free()`` in concert.
     """
     if _is_initialized["status"] != InternalInitStatus.INITIALIZED:
-        raise NvshmemInvalid("NVSHMEM Library is not initialized")
+        logger.warning("NVSHMEM Library is not initialized. Cannot free buffer")
+        return
     # _get_device() excepts if no device is current
     user_nvshmem_dev, other_dev = _get_device()
 
@@ -154,7 +158,7 @@ def get_peer_buffer(buffer: Buffer, pe: int):
     # _get_device() excepts if no device is current
     user_nvshmem_dev, other_dev = _get_device()
 
-    if not isinstance(buffer, Buffer) or not hasattr(buffer, "_mnff"):
+    if not isinstance(buffer, Buffer) or not hasattr(buffer, "handle"):
         raise NvshmemInvalid("Tried to use a buffer not from NVSHmem")
     
     mr = buffer.memory_resource
@@ -214,7 +218,7 @@ def unregister_external_buffer(buffer: Buffer) -> None:
     # _get_device() excepts if no device is current
     user_nvshmem_dev, other_dev = _get_device()
 
-    if not isinstance(buffer, Buffer) or not hasattr(buffer, "_mnff"):
+    if not isinstance(buffer, Buffer) or not hasattr(buffer, "handle"):
         raise NvshmemInvalid("Tried to use a buffer not from NVSHmem")
     
     mr = _mr_references.get(user_nvshmem_dev.device_id)
@@ -262,7 +266,7 @@ def get_multicast_buffer(team: Teams, buffer: Buffer) -> Buffer:
     # _get_device() excepts if no device is current
     user_nvshmem_dev, other_dev = _get_device()
 
-    if not isinstance(buffer, Buffer) or not hasattr(buffer, "_mnff"):
+    if not isinstance(buffer, Buffer) or not hasattr(buffer, "handle"):
         raise NvshmemInvalid("Tried to use a buffer not from NVSHmem")
     
     mr = buffer.memory_resource
