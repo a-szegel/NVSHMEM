@@ -61,11 +61,11 @@ NVSHMEMI_TRANSFER_STATIC NVSHMEMI_TRANSFER_INLINE __device__ void nvshmemi_trans
 template <threadgroup_t SCOPE>
 NVSHMEMI_TRANSFER_STATIC NVSHMEMI_TRANSFER_INLINE __device__ void nvshmemi_transfer_quiet(
     bool use_membar, int pe = NVSHMEMX_PE_ALL, nvshmemx_qp_handle_t *qp_handle = NULL,
-    int num_qps = 1);
+    int num_qps = NVSHMEMX_QP_ALL);
 
 template <threadgroup_t SCOPE>
 NVSHMEMI_TRANSFER_STATIC NVSHMEMI_TRANSFER_INLINE __device__ void nvshmemi_transfer_fence(
-    int pe = NVSHMEMX_PE_ALL, nvshmemx_qp_handle_t *qp_handle = NULL, int num_qps = 1);
+    int pe = NVSHMEMX_PE_ALL, nvshmemx_qp_handle_t *qp_handle = NULL, int num_qps = NVSHMEMX_QP_ALL);
 NVSHMEMI_TRANSFER_STATIC NVSHMEMI_TRANSFER_INLINE __device__ void
 nvshmemi_transfer_enforce_consistency_at_target(bool use_membar);
 NVSHMEMI_TRANSFER_STATIC NVSHMEMI_TRANSFER_INLINE __device__ void

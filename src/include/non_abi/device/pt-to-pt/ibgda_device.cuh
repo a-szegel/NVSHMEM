@@ -3387,46 +3387,21 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_ibgda_put_signal(
 }
 
 template <threadgroup_t SCOPE>
-__device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_ibgda_quiet() {
-    CONSTANT_ADDRESS_SPACE nvshmemi_ibgda_device_state_t *state = ibgda_get_state();
-    nvshmemi_ibgda_device_qp_t *qp;
-    uint32_t ndcis = state->num_shared_dcis + state->num_exclusive_dcis;
-    uint32_t nrcs = state->num_default_rc_per_pe * nvshmemi_device_state_d.npes *
-                    state->num_devices_initialized;
-    uint32_t index_in_scope = nvshmemi_thread_id_in_threadgroup<SCOPE>();
-    uint32_t scope_size = nvshmemi_threadgroup_size<SCOPE>();
-
-    scope_size =
-        scope_size > IBGDA_MAX_THREADS_PER_QUIET ? IBGDA_MAX_THREADS_PER_QUIET : scope_size;
-
-    if (index_in_scope < scope_size) {
-        for (uint32_t i = index_in_scope; i < ndcis; i += scope_size) {
-            qp = &state->globalmem.dcis[i];
-            ibgda_quiet_with_cst(qp, true);
-        }
-
-        for (uint32_t i = index_in_scope; i < nrcs; i += scope_size) {
-            if (i % nvshmemi_device_state_d.npes == nvshmemi_device_state_d.mype) {
-                continue;
-            }
-            qp = &state->globalmem.rcs[i];
-            ibgda_quiet_with_cst(qp, true);
-        }
-    }
-}
-
-template <threadgroup_t SCOPE>
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_ibgda_qp_quiet(
     bool enforce_cst, int pe_hint, nvshmemx_qp_handle_t *qp_handle, int num_qps) {
     CONSTANT_ADDRESS_SPACE nvshmemi_ibgda_device_state_t *state = ibgda_get_state();
     nvshmemi_ibgda_device_qp_t *qp;
     int npes;
     int start_pe;
-    uint32_t nrcs = NVSHMEMI_MIN(num_qps, state->num_rc_per_pe * state->num_devices_initialized);
+    uint32_t ndcis = state->num_shared_dcis + state->num_exclusive_dcis;
+    uint32_t nrcs;
     uint32_t index_in_scope = nvshmemi_thread_id_in_threadgroup<SCOPE>();
     uint32_t scope_size = nvshmemi_threadgroup_size<SCOPE>();
 
-    if (pe_hint == -1) {
+    scope_size =
+        scope_size > IBGDA_MAX_THREADS_PER_QUIET ? IBGDA_MAX_THREADS_PER_QUIET : scope_size;
+
+    if (pe_hint == NVSHMEMX_PE_ANY) {
         npes = nvshmemi_device_state_d.npes;
         start_pe = 0;
     } else {
@@ -3434,10 +3409,27 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_ibgda_qp_quiet(
         start_pe = pe_hint;
     }
 
-    if (qp_handle == NULL || qp_handle[0] == NVSHMEMX_QP_DEFAULT ||
-        qp_handle[0] == NVSHMEMX_QP_ANY) {
-        nvshmemi_ibgda_quiet<SCOPE>();
-        return;
+    /* In all or default case, we need to quiet all DCIs too. */
+    if (num_qps == NVSHMEMX_QP_ALL || qp_handle && qp_handle[0] == NVSHMEMX_QP_ALL) {
+        nrcs = state->num_rc_per_pe * state->num_devices_initialized;
+        if (index_in_scope < scope_size) {
+            for (uint32_t i = index_in_scope; i < ndcis; i += scope_size) {
+                qp = &state->globalmem.dcis[i];
+                ibgda_quiet_with_cst(qp, true);
+            }
+        }
+        qp_handle = NULL;
+    } else if (num_qps == NVSHMEMX_QP_DEFAULT || qp_handle && qp_handle[0] == NVSHMEMX_QP_DEFAULT) {
+            nrcs = state->num_default_rc_per_pe * state->num_devices_initialized;
+            if (index_in_scope < scope_size) {
+                for (uint32_t i = index_in_scope; i < ndcis; i += scope_size) {
+                    qp = &state->globalmem.dcis[i];
+                    ibgda_quiet_with_cst(qp, true);
+                }
+            }
+            qp_handle = NULL;
+    } else {
+        nrcs = NVSHMEMI_MIN(num_qps, state->num_rc_per_pe * state->num_devices_initialized);
     }
 
     scope_size =
@@ -3446,8 +3438,8 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_ibgda_qp_quiet(
     // Match this up with the new qp addition APIs.
     if (index_in_scope < scope_size) {
         for (uint32_t i = index_in_scope; i < nrcs * npes; i += scope_size) {
-            int qp_idx = i / num_qps;
-            int pe_idx = i % num_qps;
+            int qp_idx = i % nrcs;
+            int pe_idx = (i / nrcs) + start_pe;
             if (pe_idx == nvshmemi_device_state_d.mype) {
                 continue;
             }
@@ -3455,7 +3447,11 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_ibgda_qp_quiet(
                 continue;
             }
 
-            qp = &state->globalmem.rcs[qp_idx + pe_idx];
+            if (qp_handle == NULL) {
+                qp = &state->globalmem.rcs[qp_idx * nvshmemi_device_state_d.npes + pe_idx];
+            } else {
+                qp = &state->globalmem.rcs[qp_handle[qp_idx] + pe_idx];
+            }
             ibgda_quiet_with_cst(qp, enforce_cst);
         }
     }
@@ -3505,7 +3501,7 @@ template <threadgroup_t SCOPE>
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_ibgda_qp_fence(
     int pe_hint, nvshmemx_qp_handle_t *qp_handle, int num_qps) {
     if (num_qps != 1 || qp_handle == NULL || qp_handle[0] == NVSHMEMX_QP_DEFAULT ||
-        qp_handle[0] == NVSHMEMX_QP_ANY) {
+        num_qps == NVSHMEMX_QP_ALL) {
         // Fence does not guarantee the completion of prior operations.
         // It is ok for GET to finish without data arrival.
         // Use ibgda_quiet here instead of ibgda_quiet_with_cst since it is cheaper.

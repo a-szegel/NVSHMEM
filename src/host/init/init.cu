@@ -1634,7 +1634,7 @@ int set_job_connectivity(nvshmemi_state_t *state) {
     nvshmemi_job_connectivity = NVSHMEMI_JOB_GPU_LDST_ATOMICS;
     for (int i = 0; i < state->npes; i++) {
         int peer_connectivity = NVSHMEMI_JOB_GPU_PROXY;
-        void *enforce_cst = NULL;
+        bool enforce_cst = false;
         // for each PE, pick the best connectivity of any transport
         for (int j = 0; j < state->num_initialized_transports; j++) {
             if (state->transports[j]) {
@@ -1648,6 +1648,9 @@ int set_job_connectivity(nvshmemi_state_t *state) {
                 else if (state->transports[j]->cap[i] &
                          (NVSHMEM_TRANSPORT_CAP_GPU_WRITE | NVSHMEM_TRANSPORT_CAP_GPU_READ |
                           NVSHMEM_TRANSPORT_CAP_GPU_ATOMICS)) {
+                    if (state->transports[j]->type == NVSHMEM_TRANSPORT_LIB_CODE_IBGDA) {
+                        enforce_cst = true;
+                    }
                     peer_connectivity = std::min(peer_connectivity, (int)NVSHMEMI_JOB_GPU_PROXY);
                     /* Note, these are not mapped atomics. They would be atomics issued from the GPU
                      * over a remote transport (e.g. IBGDA). */
@@ -1658,7 +1661,7 @@ int set_job_connectivity(nvshmemi_state_t *state) {
 #endif
                 else {
                     peer_connectivity = std::min(peer_connectivity, (int)NVSHMEMI_JOB_GPU_PROXY);
-                    enforce_cst = (void *)state->transports[j]->host_ops.enforce_cst_at_target;
+                    enforce_cst = state->transports[j]->host_ops.enforce_cst_at_target == NULL ? false : true;
                 }
             }
         }
@@ -1949,6 +1952,12 @@ int nvshmemx_qp_create(int num_qps, nvshmemx_qp_handle_t **out_qp_array) {
     for (int j = 0; j < num_qps; j++) {
         out_qp_array_local[j] = NVSHMEMX_QP_DEFAULT;
     }
+
+    /* completely flush all I/O before modifying qpair states */
+    nvshmemi_barrier_all();
+    nvshmemx_quiet_on_stream(
+        nvshmemi_state->my_stream); /* wait for signal ops from barrier to complete */
+    status = cudaDeviceSynchronize();
 
     for (int i = 0; i < nvshmemi_state->num_initialized_transports; i++) {
         nvshmem_transport_t transport = (nvshmem_transport_t)nvshmemi_state->transports[i];

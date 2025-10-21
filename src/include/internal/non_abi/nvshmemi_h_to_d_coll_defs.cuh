@@ -46,7 +46,7 @@ __global__ void barrier_on_stream_kernel_threadgroup(nvshmem_team_t team, int in
     int myidx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
 
     if (nvshmemi_device_state_d.job_connectivity >= NVSHMEMI_JOB_GPU_LDST_REMOTE_ATOMICS) {
-        nvshmemi_transfer_quiet<SCOPE>(false);
+        nvshmemi_transfer_quiet<SCOPE>(false, NVSHMEMX_PE_ANY, NULL, NVSHMEMX_QP_ALL);
     }
     if (in_cuda_graph) {
         nvshmemi_threadgroup_sync<SCOPE>();
