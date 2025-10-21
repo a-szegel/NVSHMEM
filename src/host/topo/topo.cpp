@@ -521,8 +521,9 @@ out:
 }
 
 int nvshmemi_detect_same_device(nvshmemi_state_t *state) {
-    int status = 0;
+    int status = NVSHMEMX_SUCCESS;
     nvshmem_transport_pe_info_t my_info;
+    cudaDeviceProp prop;
 
     my_info.pe = state->mype;
     status = nvshmemi_get_pcie_attrs(&my_info.pcie_id, state->device_id);
@@ -530,7 +531,6 @@ int nvshmemi_detect_same_device(nvshmemi_state_t *state) {
                           "getPcieAttrs failed \n");
 
     my_info.hostHash = nvshmemu_getHostHash();
-    cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, state->device_id);
     my_info.gpu_uuid = prop.uuid;
 
@@ -560,14 +560,14 @@ int nvshmemi_detect_same_device(nvshmemi_state_t *state) {
             NVSHMEMI_ERROR_EXIT("MPG support is currently not available on P9 platforms");
 #endif
             nvshmemi_is_mpg_run = 1;
-            status = 0;
+            status = NVSHMEMX_SUCCESS;
         }
     }
 
 out:
     if (status) {
         state->cucontext = NULL;
-        if (!state->pe_info) free(state->pe_info);
+        if (state->pe_info) free(state->pe_info);
     }
     return status;
 }

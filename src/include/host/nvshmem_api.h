@@ -26,6 +26,8 @@
 #include "host/nvshmem_coll_api.h"
 #include "non_abi/nvshmem_version.h"
 
+extern long nvshmem_error;
+
 int nvshmemi_init_thread(int requested_thread_support, int *provided_thread_support,
                          unsigned int bootstrap_flags, nvshmemx_init_attr_t *bootstrap_attr,
                          nvshmemi_version_t);

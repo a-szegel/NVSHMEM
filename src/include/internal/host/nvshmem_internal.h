@@ -112,7 +112,7 @@ extern bool nvshmemi_is_limited_mpg_run;
 int nvshmemi_proxy_level(nvshmemi_state_t *state);
 int nvshmemi_common_init(nvshmemi_state_t *state, nvshmemx_init_attr_t *attr = NULL);
 int nvshmemi_init_g_buffer();
-void nvshmemi_init_symmetric_heap(nvshmemi_state_t *state, bool is_vmm, int heap_kind);
+int nvshmemi_init_symmetric_heap(nvshmemi_state_t *state, bool is_vmm, int heap_kind);
 void nvshmemi_fini_symmetric_heap(nvshmemi_state_t *state);
 int nvshmemi_init_device_state(nvshmemi_state_t *state);
 int nvshmemi_setup_connections(nvshmemi_state_t *state);
@@ -122,7 +122,7 @@ void nvshmemi_signal_op_on_stream(uint64_t *sig_addr, uint64_t signal, int sig_o
 __device__ void nvshmemi_signal_op(uint64_t *sig_addr, uint64_t signal, int sig_op, int pe,
                                    nvshmemx_qp_handle_t qp_index = NVSHMEMX_QP_DEFAULT);
 extern "C" {
-void nvshmemi_get_mem_handle(void **dev_state_ptr, void **transport_dev_state_ptr);
+int nvshmemi_get_device_state_ptrs(void **dev_state_ptr, void **transport_dev_state_ptr);
 }
 
 void nvshmemi_barrier_all();

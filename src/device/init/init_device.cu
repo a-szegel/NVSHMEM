@@ -17,6 +17,7 @@
 #include "non_abi/nvshmem_version.h"
 #include "non_abi/nvshmemx_error.h"
 #include "internal/device/nvshmemi_device.h"
+#include "internal/common/error_codes_internal.h"
 #include "non_abi/device/pt-to-pt/proxy_device.cuh"
 #include "device_host/nvshmem_common.cuh"
 #include "device_host/nvshmem_types.h"
@@ -73,7 +74,7 @@ NVSHMEMI_DEVICE_PREFIX void nvshmem_global_exit(int status) {
 
 #ifdef __cplusplus
 extern "C" {
-void nvshmemi_get_mem_handle(void **dev_state_ptr, void **transport_dev_state_ptr);
+int nvshmemi_get_device_state_ptrs(void **dev_state_ptr, void **transport_dev_state_ptr);
 }
 #endif
 
@@ -88,12 +89,14 @@ out:
     return status;
 }
 
-void nvshmemi_check_state_and_init_d() {
-    int status;
+int nvshmemi_check_state_and_init_d() {
+    int status = NVSHMEMI_SUCCESS;
     int ret;
 
-    if (nvshmemid_init_status() == NVSHMEM_STATUS_NOT_INITIALIZED)
-        NVSHMEMI_ERROR_EXIT("nvshmem API called before nvshmem_init \n");
+    if (nvshmemid_init_status() == NVSHMEM_STATUS_NOT_INITIALIZED) {
+        fprintf(stderr, "nvshmem API called before nvshmem_init \n");
+        return NVSHMEMI_NOT_INITIALIZED;
+    }
     if (nvshmemid_init_status() == NVSHMEM_STATUS_IS_BOOTSTRAPPED) {
         /* The fact that we can pass NVSHMEM_THREAD_SERIALIZED
          * here is an implementation detail. It should be fixed
@@ -101,39 +104,49 @@ void nvshmemi_check_state_and_init_d() {
         status = nvshmemid_hostlib_init_attr(NVSHMEM_THREAD_SERIALIZED, &ret, 0, NULL,
                                              nvshmemi_device_lib_version, NULL);
         if (status) {
-            NVSHMEMI_ERROR_EXIT("nvshmem initialization failed, exiting \n");
+            fprintf(stderr, "nvshmem initialization failed, exiting \n");
+            return NVSHMEMI_NOT_INITIALIZED;
         }
 
         status = cudaGetDevice(&nvshmemi_device_only_state.cuda_device_id);
         if (status) {
-            NVSHMEMI_ERROR_EXIT("nvshmem cuda device query failed, exiting \n");
+            fprintf(stderr, "nvshmem cuda device query failed, exiting \n");
+            return NVSHMEMI_CUDA_GET_DEVICE_FAILED;
         }
 
-        nvshmemid_hostlib_finalize(NULL, NULL);
+        nvshmemid_hostlib_finalize(NULL, NULL); // for refcounting
     }
 
     if (!nvshmemi_device_only_state.is_initialized) {
         status = _nvshmemi_init_device_only_state();
         if (status) {
-            NVSHMEMI_ERROR_EXIT("nvshmem device initialization failed, exiting \n");
+            fprintf(stderr, "nvshmem device initialization failed, exiting \n");
+            return NVSHMEMI_INIT_DEVICE_ONLY_STATE_FAILED;
         }
     }
+
+    return status;
 }
 
-void nvshmemi_get_mem_handle(void **dev_state_ptr, void **transport_dev_state_ptr) {
-    int status = 0;
+int nvshmemi_get_device_state_ptrs(void **dev_state_ptr, void **transport_dev_state_ptr) {
+    int status = NVSHMEMI_SUCCESS;
     status = cudaGetSymbolAddress(dev_state_ptr, nvshmemi_device_state_d);
     if (status) {
         NVSHMEMI_ERROR_PRINT("Unable to access device state. %d\n", status);
         *dev_state_ptr = NULL;
+        status = NVSHMEMX_ERROR_INTERNAL;
+        goto out;
     }
 #ifdef NVSHMEM_IBGDA_SUPPORT
     status = cudaGetSymbolAddress(transport_dev_state_ptr, nvshmemi_ibgda_device_state_d);
     if (status) {
         NVSHMEMI_ERROR_PRINT("Unable to access ibgda device state. %d\n", status);
         *transport_dev_state_ptr = NULL;
+        status = NVSHMEMX_ERROR_INTERNAL;
     }
 #endif
+out:
+    return status;
 }
 
 int nvshmemi_init_thread(int requested_thread_support, int *provided_thread_support,
@@ -146,7 +159,7 @@ int nvshmemi_init_thread(int requested_thread_support, int *provided_thread_supp
 #endif
     status = nvshmemid_hostlib_init_attr(requested_thread_support, provided_thread_support,
                                          bootstrap_flags, bootstrap_attr,
-                                         nvshmemi_device_lib_version, &nvshmemi_get_mem_handle);
+                                         nvshmemi_device_lib_version, &nvshmemi_get_device_state_ptrs);
     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
                           "nvshmem_internal_init_thread failed \n");
 

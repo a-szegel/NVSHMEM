@@ -501,7 +501,7 @@ typedef struct {
     int patch;
 } nvshmemi_version_t;
 
-typedef void (*nvshmemx_device_lib_init_cb)(void **dev_state_ptr, void **transport_dev_state_ptr);
+typedef int (*nvshmemx_device_lib_init_cb)(void **dev_state_ptr, void **transport_dev_state_ptr);
 
 #if defined __cplusplus
 extern "C" {

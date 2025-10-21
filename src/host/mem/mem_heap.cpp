@@ -31,7 +31,7 @@
 #include "device_host_transport/nvshmem_common_transport.h"                // for g_elem_t
 #include "internal/host/debug.h"                                           // for INFO
 #include "internal/host/nvshmem_internal.h"                                // for nvshm...
-#include "internal/host/error_codes_internal.h"                            // for NVSHM...
+#include "internal/common/error_codes_internal.h"                          // for NVSHM...
 #include "internal/host/custom_malloc.h"                                   // for mspace
 #include "internal/host/nvshmem_nvtx.hpp"                                  // for nvtx_...
 #include "internal/host/nvshmemi_symmetric_heap.hpp"                       // for nvshm...
@@ -55,6 +55,8 @@
 static_assert(sizeof(CUmemGenericAllocationHandle) <= NVSHMEM_MEM_HANDLE_SIZE,
               "sizeof(CUmemGenericAllocationHandle) <= NVSHMEM_MEM_HANDLE_SIZE");
 
+long nvshmem_error = 0;
+
 /**
  * By OpenSHMEM spec standard, coll sync are not needed
  * if size == 0 or if ptr is NULL
@@ -69,13 +71,14 @@ std::vector<nvshmemi_shared_memory_info_t> nvshmemi_symmetric_heap_sysmem_static
 nvshmemi_mem_remote_transport *nvshmemi_mem_remote_transport::remote_objref_;
 nvshmemi_mem_p2p_transport *nvshmemi_mem_p2p_transport::p2p_objref_;
 
-void nvshmemi_init_symmetric_heap(nvshmemi_state_t *state, bool is_vmm, int heap_kind) {
+int nvshmemi_init_symmetric_heap(nvshmemi_state_t *state, bool is_vmm, int heap_kind) {
+    int status = NVSHMEMX_SUCCESS;
     nvshmemi_symmetric_heap_sysmem_static_shm *nvshmemi_sysmem_shm = nullptr;
     nvshmemi_symmetric_heap_vidmem_dynamic_vmm *nvshmemi_vidmem_vmm = nullptr;
     nvshmemi_symmetric_heap_vidmem_static_pinned *nvshmemi_vidmem_static = nullptr;
 
     if (state->heap_obj != nullptr) {
-        return;
+        return status;
     }
 
     if (nvshmemi_vidmem_vmm == nullptr && is_vmm) {
@@ -93,6 +96,7 @@ void nvshmemi_init_symmetric_heap(nvshmemi_state_t *state, bool is_vmm, int heap
         NVSHMEMI_ERROR_EXIT("Requested Heap Kind: %d(0-VIDMEM,1-SYSMEM,>3-INVALID), with VMM: %s\n",
                             heap_kind, (is_vmm ? "Yes" : "No"));
     }
+    return status;
 }
 
 void nvshmemi_fini_symmetric_heap(nvshmemi_state_t *state) {
@@ -2291,7 +2295,11 @@ void *nvshmem_malloc(size_t size) {
     NVTX_FUNC_RANGE_IN_GROUP(ALLOC);
 
     NVSHMEMU_THREAD_CS_ENTER();
-    nvshmemi_check_state_and_init();
+    int ret = nvshmemi_check_state_and_init();
+    if (ret) {
+        nvshmem_error = 1;
+        goto exit_and_return;
+    }
 
     if (NVSHMEMI_IS_NO_ACTION_BY_SIZE(size)) {
         goto exit_and_return;
@@ -2313,7 +2321,11 @@ void *nvshmem_calloc(size_t count, size_t size) {
     NVTX_FUNC_RANGE_IN_GROUP(ALLOC);
 
     NVSHMEMU_THREAD_CS_ENTER();
-    nvshmemi_check_state_and_init();
+    int ret = nvshmemi_check_state_and_init();
+    if (ret) {
+        nvshmem_error = 1;
+        goto exit_and_return;
+    }
 
     if (NVSHMEMI_IS_NO_ACTION_BY_SIZE(size)) {
         goto exit_and_return;
@@ -2335,7 +2347,11 @@ void *nvshmem_align(size_t alignment, size_t size) {
     NVTX_FUNC_RANGE_IN_GROUP(ALLOC);
 
     NVSHMEMU_THREAD_CS_ENTER();
-    nvshmemi_check_state_and_init();
+    int ret = nvshmemi_check_state_and_init();
+    if (ret) {
+        nvshmem_error = 1;
+        goto exit_and_return;
+    }
 
     if (NVSHMEMI_IS_NO_ACTION_BY_SIZE(size)) {
         goto exit_and_return;
@@ -2409,14 +2425,18 @@ void *nvshmemx_buffer_register_symmetric(void *buf_ptr, size_t size, int flags) 
     NVTX_FUNC_RANGE_IN_GROUP(ALLOC);
 
     NVSHMEMU_THREAD_CS_ENTER();
-    nvshmemi_check_state_and_init();
+    int ret = nvshmemi_check_state_and_init();
+    if (ret) {
+        nvshmem_error = 1;
+        goto exit_and_return;
+    }
 
     ptr = nvshmemi_state->heap_obj->mmap_mem(buf_ptr, size, flags);
 
     nvshmemi_barrier_all();
 
+exit_and_return:
     NVSHMEMU_THREAD_CS_EXIT();
-
     return ptr;
 }
 

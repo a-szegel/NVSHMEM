@@ -15,7 +15,7 @@
 int nvshmemi_setup_collective_launch();
 int nvshmemi_teardown_collective_launch();
 
-void nvshmemi_check_state_and_init_d();
+int nvshmemi_check_state_and_init_d();
 typedef struct {
     cudaStream_t stream;
     cudaEvent_t begin_event;

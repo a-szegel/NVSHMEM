@@ -25,7 +25,7 @@
         }                                                                         \
     } while (0)
 
-void nvshmemi_check_state_and_init_d();
+int nvshmemi_check_state_and_init_d();
 
 inline int nvshmemi_minv(int *vec, int count) {
     int minval = INT_MAX;
@@ -54,7 +54,12 @@ static int _nvshmemi_collective_launch_query_gridsize(const void *func, dim3 blo
     int maxBlocksSM;
     int status = 0;
 
-    nvshmemi_check_state_and_init_d();
+    int ret = nvshmemi_check_state_and_init_d();
+    if (ret) {
+        fprintf(stderr, "nvshmemi_check_state_and_init_d() failed");
+        status = NVSHMEMX_ERROR_INTERNAL;
+        goto out;
+    }
     multiProcessorCount = nvshmemi_device_only_state.cu_dev_attrib.multi_processor_count;
     // get min blocks per SM, error out if 0 for any GPU
     status =
@@ -78,7 +83,12 @@ static int _nvshmemi_collective_launch(const void *func, dim3 gridDims, dim3 blo
     int launchFailed = 1;
     int status = 0;
 
-    nvshmemi_check_state_and_init_d();
+    int ret = nvshmemi_check_state_and_init_d();
+    if (ret) {
+        fprintf(stderr, "nvshmemi_check_state_and_init_d() failed");
+        status = NVSHMEMX_ERROR_INTERNAL;
+        goto out;
+    }
     // XXX: Supports the user passing a non-zero grid but of differing size across ranks
     if (gridDims.x == 0 && gridDims.y == 0 && gridDims.z == 0) {
         gridSize = 0;

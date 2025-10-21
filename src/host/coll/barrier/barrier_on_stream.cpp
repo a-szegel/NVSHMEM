@@ -73,7 +73,10 @@ void nvshmemxi_barrier_all_on_stream(cudaStream_t stream) {
 
 void nvshmemx_barrier_all_on_stream(cudaStream_t stream) {
     NVTX_FUNC_RANGE_IN_GROUP(COLL);
-    nvshmemi_check_state_and_init();
+
+    int ret = nvshmemi_check_state_and_init();
+    NVSHMEMI_NZ_EXIT(ret, "nvshmemi_check_state_and_init() failed");
+
     nvshmemxi_barrier_all_on_stream(stream);
 }
 
@@ -107,7 +110,10 @@ void nvshmemxi_sync_all_on_stream(cudaStream_t stream) {
 
 void nvshmemx_sync_all_on_stream(cudaStream_t stream) {
     NVTX_FUNC_RANGE_IN_GROUP(COLL);
-    nvshmemi_check_state_and_init();
+
+    int ret = nvshmemi_check_state_and_init();
+    NVSHMEMI_NZ_EXIT(ret, "nvshmemi_check_state_and_init() failed");
+
     nvshmemxi_sync_all_on_stream(stream);
 }
 
