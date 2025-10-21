@@ -468,8 +468,8 @@ __device__ inline void nvshmemi_tile_cpy_put_get_threadgroup_wrapper(src_tensor_
     // issue one (thread scope) PUT/GET along major dimension (stride 1)
     T *src_ptr = src_tensor.data();
     T *dst_ptr = dst_tensor.data();
-    const int myIdx = nvshmemi_thread_id_in_threadgroup<NVSHMEMI_THREADGROUP_THREAD>();
-    const int groupSize = nvshmemi_threadgroup_size<NVSHMEMI_THREADGROUP_THREAD>();
+    const int myIdx = nvshmemi_thread_id_in_threadgroup<scope>();
+    const int groupSize = nvshmemi_threadgroup_size<scope>();
 
     for (int i = myIdx; i < get_shape_element<minor_dim>(src_tensor); i += groupSize) {
         dst_ptr = dst_tensor.data() + get_stride_element<minor_dim>(dst_tensor) * i;
@@ -482,6 +482,7 @@ __device__ inline void nvshmemi_tile_cpy_put_get_threadgroup_wrapper(src_tensor_
                 dst_ptr, src_ptr, get_shape_element<major_dim>(src_tensor), pe);
         }
     }
+    nvshmemi_threadgroup_sync<scope>();
 }
 
 template <typename src_tensor_t, typename dst_tensor_t, typename tuple_t, threadgroup_t scope,
