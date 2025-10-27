@@ -396,7 +396,7 @@ class NvshmemResource(MemoryResource):
         parent_ptr = buffer.handle
         result = ptr(parent_ptr, pe)
 
-        if result is None:
+        if not result or result == 0:
             raise NvshmemError("Failed to retrieve peer buffer")
 
         entry = self._mem_references.get(result, None)
@@ -423,7 +423,7 @@ class NvshmemResource(MemoryResource):
         # None or raising an exception is the failing case
         parent_ptr = buffer.handle
         result = mc_ptr(team, parent_ptr)
-        if result is None:
+        if not result or result == 0:
             raise NvshmemError("Failed to retrieve multicast buffer")
 
         entry = self._mem_references.get(result, None)
