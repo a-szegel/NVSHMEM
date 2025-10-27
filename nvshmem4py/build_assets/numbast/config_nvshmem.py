@@ -134,10 +134,20 @@ def main(nvshmem_home, config_version, binding_name, entry_point_path, input_pat
     # Generate cooperative launch required functions
     cooperative_functions = generate_cooperative_launch_functions()
     
+    # Get CUDA13 CCCL include path
+    CUDA_HOME = os.environ.get("CUDA_HOME", "/usr/local/cuda")
+    CUDA13_CCCL_INCLUDE_PATH = os.path.join(CUDA_HOME, "include", "cccl")
+    
+    if not os.path.exists(CUDA13_CCCL_INCLUDE_PATH):    
+        CUDA13_CCCL_INCLUDE_PATH = ""
+    else:
+        CUDA13_CCCL_INCLUDE_PATH = f"- {CUDA13_CCCL_INCLUDE_PATH}"
+
     # Prepare template variables
     template_vars = {
         'CONFIG_VERSION': config_version,
         'NVSHMEM_HOME': nvshmem_home,
+        'CUDA13_CCCL_INCLUDE_PATH': CUDA13_CCCL_INCLUDE_PATH,
         'ENTRY_POINT_PATH': entry_point_path,
         'OUTPUT_NAME': binding_name,
         'COOPERATIVE_LAUNCH_REQUIRED_FUNCTIONS': cooperative_functions

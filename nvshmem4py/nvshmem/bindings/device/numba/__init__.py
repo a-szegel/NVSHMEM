@@ -27,12 +27,17 @@ if os.path.exists(os.path.join(os.path.dirname(__file__), "_numbast.py")):
     if not os.path.exists(INCLUDE_PATH):
         raise RuntimeError(f"NVSHMEM headers not found at {INCLUDE_PATH}. Please confirm that nvshmem is installed correctly.")
 
+    CCCL_INCLUDE_PATH = find_nvidia_header_directory("cccl")
+
+    if not os.path.exists(CCCL_INCLUDE_PATH):
+        raise RuntimeError(f"CCCL headers not found at {CCCL_INCLUDE_PATH}. Please confirm that cccl is installed correctly.")
+
     # Path to this folder to look for entry point file
     this_folder = os.path.dirname(os.path.abspath(__file__))
     if not os.path.exists(os.path.join(this_folder, "entry_point.h")):
         raise RuntimeError("entry_point.h not found, package may not be properly installed")
 
-    cuda.config.CUDA_NVRTC_EXTRA_SEARCH_PATHS = ":".join([INCLUDE_PATH, this_folder])
+    cuda.config.CUDA_NVRTC_EXTRA_SEARCH_PATHS = ":".join([INCLUDE_PATH, CCCL_INCLUDE_PATH, this_folder])
 
 else:
     warnings.warn("Numba device bindings are not enabled", NvshmemWarning)
