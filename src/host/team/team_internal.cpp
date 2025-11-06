@@ -907,7 +907,7 @@ void nvshmemi_duplicate_team(nvshmem_team_t team, nvshmemi_team_t *my_team) {
         NVSHMEMU_FOR_EACH(i, max_required_duplicate_teams - 1) {
             nvshmemi_team_split_strided(nvshmemi_team_pool[team], 0, 1, nvshmem_team_n_pes(team), NULL, 0,
                                        &(my_team->team_dups[i + 1]), true);
-            INFO(NVSHMEM_TEAM, "Duplicate team ID: %d of parent team: %d; duplicate team: %zu / %zu\n",
+            INFO(NVSHMEM_TEAM, "Duplicate team ID: %d of parent team: %d; duplicate team: %zu / %d\n",
                  my_team->team_dups[i + 1], my_team->team_idx, i, max_required_duplicate_teams);
             if (my_team->team_dups[i + 1] == NVSHMEM_TEAM_INVALID) {
                 NVSHMEMI_ERROR_EXIT(
