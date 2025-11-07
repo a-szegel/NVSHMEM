@@ -42,3 +42,8 @@ Module Callbacks:
   teardown: "lambda x: nvshmem.bindings.cumodule_finalize(int(x))"
 
 Shim Include Override: "\"entry_point.h\""
+
+Exclude:
+  Function:
+    - "nvshmem_ptr"
+    - "nvshmem_mc_ptr"

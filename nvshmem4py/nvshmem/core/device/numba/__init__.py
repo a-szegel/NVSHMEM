@@ -18,7 +18,8 @@ if os.path.exists(os.path.join(os.path.dirname(__file__), "rma.py")):
     from .direct import *
     from .amo import *
     from .collective import *
-    __all__ = rma.__all__ + direct.__all__ + amo.__all__ + collective.__all__
+    from .mem import *
+    __all__ = rma.__all__ + direct.__all__ + amo.__all__ + collective.__all__ + mem.__all__
 else:
     warnings.warn("Numba device bindings are not enabled", NvshmemWarning)
     rma = None
