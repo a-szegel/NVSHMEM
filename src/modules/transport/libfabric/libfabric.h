@@ -334,7 +334,10 @@ typedef struct nvshmemt_libfabric_gdr_send_amo_op {
     nvshmemi_amo_t op;
     void *target_addr;
     void *ret_addr;
-    uint64_t retflag;
+    union {
+        uint64_t retflag;
+        uint32_t sequence_count;
+    };
     uint64_t swap_add;
     uint64_t comp;
     uint32_t size;
