@@ -67,7 +67,7 @@ static bool use_gdrcopy = false;
 
 static bool use_staged_atomics = false;
 threadSafeOpQueue nvshmemtLibfabricOpQueue;
-std::mutex gdrRecvMutex;
+std::recursive_mutex gdrRecvMutex;
 
 int nvshmemt_libfabric_gdr_process_amos(nvshmem_transport_t transport);
 int nvshmemt_libfabric_put_signal_completion(nvshmem_transport_t transport,
