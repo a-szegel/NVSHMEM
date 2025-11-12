@@ -1180,6 +1180,10 @@ int nvshmemi_common_init(nvshmemi_state_t *state, nvshmemx_init_attr_t *attr) {
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "mps setup failed \n");
     }
     nvshmemi_boot_handle.barrier(&nvshmemi_boot_handle);
+    CUDA_RUNTIME_CHECK_GOTO(
+        cudaMemcpy(heap_base_array_dptr, (const void *)state->heap_obj->get_local_pe_base(),
+                   sizeof(void *) * state->npes, cudaMemcpyHostToDevice),
+        status, out);
 
     nvshmemi_update_device_state();
     nvshmemi_is_device_state_ready = 1;
