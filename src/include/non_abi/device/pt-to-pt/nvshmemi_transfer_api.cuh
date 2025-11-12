@@ -15,7 +15,7 @@
 
 #if defined __clang_llvm_bitcode_lib__
 #define NVSHMEMI_TRANSFER_INLINE \
-    __attribute__((noinline, section(".text.compute"), not_tail_called))
+    __attribute__((noinline, not_tail_called))
 #define NVSHMEMI_TRANSFER_STATIC
 #elif defined NVSHMEM_ENABLE_ALL_DEVICE_INLINING
 #define NVSHMEMI_TRANSFER_INLINE inline
