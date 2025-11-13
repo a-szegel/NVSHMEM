@@ -295,8 +295,10 @@ int nvshmemi_symmetric_heap::map_heap_range_by_size(void *buf, size_t size) {
                      buf, size, i, j);
                 status = map_heap_range_by_pe(i, j, (char *)buf, size);
                 if (status) {
-                    // map operation failed, remove cap of transport
-                    state->transports[j]->cap[i] ^= NVSHMEM_TRANSPORT_CAP_MAP;
+                    // map operation failed, remove ALL map-related capabilities
+                    state->transports[j]->cap[i] &=
+                        ~(NVSHMEM_TRANSPORT_CAP_MAP | NVSHMEM_TRANSPORT_CAP_MAP_GPU_ST |
+                          NVSHMEM_TRANSPORT_CAP_MAP_GPU_LD | NVSHMEM_TRANSPORT_CAP_MAP_GPU_ATOMICS);
                     status = 0;
                     peer_heap_base_p2p_[i] = NULL;
                     continue;
