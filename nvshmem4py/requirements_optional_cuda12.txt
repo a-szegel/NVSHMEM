@@ -2,6 +2,7 @@
 # nvshmem4py is aware of and interoperable with them
 # but doesn't depend on them
 mpi4py
+--index-url https://download.pytorch.org/whl/cu129
 torch
 ml-dtypes
 # NOTE! If you are installing PyTorch, you should install these requirements AFTER PyTorch.

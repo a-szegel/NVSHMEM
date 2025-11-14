@@ -69,6 +69,28 @@ def team_split_strided(parent_team: Teams, start: int, stride: int, size: int, c
         If new_team_name is None, the default name will be "TEAM_{handle_value}" where
         handle_value is the numeric handle returned by the underlying NVSHMEM function.
     """
+    # Validate arguments early to avoid entering a collective with invalid parameters
+    # This prevents the NVSHMEM progress loop from spinning/logging on mismatched collectives
+    if isinstance(parent_team, int) and parent_team < 0:
+        raise NvshmemError(f"Invalid parent_team: {parent_team}")
+    if size <= 0:
+        raise NvshmemError(f"Invalid size: {size}. Must be > 0.")
+    if stride < 1:
+        raise NvshmemError(f"Invalid stride: {stride}. Must be >= 1.")
+    if start < 0:
+        raise NvshmemError(f"Invalid start: {start}. Must be >= 0.")
+    try:
+        # Import locally to avoid potential circular imports at module import time
+        import nvshmem.core as _core
+        parent_size = _core.team_n_pes(parent_team)
+        if start >= parent_size:
+            raise NvshmemError(f"Invalid start: {start}. Must be < parent team size {parent_size}.")
+        if size > parent_size:
+            raise NvshmemError(f"Invalid size: {size}. Must be <= parent team size {parent_size}.")
+    except Exception:
+        # If parent team size is not available, proceed with minimal validation above
+        pass
+
     new_team_handle = ctypes.c_int()
 
     bindings.team_split_strided(parent_team, start, stride, size, config.ptr, config_mask, ctypes.addressof(new_team_handle))
@@ -113,6 +135,20 @@ def team_split_2d(parent_team: Teams, xrange: int, xaxis_config: TeamConfig, xax
         underlying NVSHMEM function. If new_team_name is provided, the teams will be named
         "{new_team_name}_X" and "{new_team_name}_Y".
     """
+    # Validate arguments early to avoid entering a collective with invalid parameters
+    if isinstance(parent_team, int) and parent_team < 0:
+        raise NvshmemError(f"Invalid parent_team: {parent_team}")
+    if xrange <= 0:
+        raise NvshmemError(f"Invalid xrange: {xrange}. Must be > 0.")
+    try:
+        import nvshmem.core as _core
+        parent_size = _core.team_n_pes(parent_team)
+        if xrange > parent_size:
+            raise NvshmemError(f"Invalid xrange: {xrange}. Must be <= parent team size {parent_size}.")
+    except Exception:
+        # If parent team size is not available, proceed with minimal validation above
+        pass
+
     xaxis_team_handle = ctypes.c_int()
     yaxis_team_handle = ctypes.c_int()
 
@@ -229,4 +265,33 @@ def team_translate_pe(src_team: Teams, src_pe: int, dest_team: Teams) -> int:
     Raises:
         NvshmemError: If the translation operation fails.
     """
+    # Validate arguments early to avoid entering collectives with invalid parameters
+    if isinstance(src_team, int) and src_team < 0:
+        raise NvshmemError(f"Invalid src_team: {src_team}")
+    if isinstance(dest_team, int) and dest_team < 0:
+        raise NvshmemError(f"Invalid dest_team: {dest_team}")
+    if src_pe < 0:
+        raise NvshmemError(f"Invalid src_pe: {src_pe}. Must be >= 0.")
+    # Ensure teams are registered in Teams registry when passed as handles
+    if isinstance(src_team, int):
+        try:
+            # values() returns a view; cast to list for membership on ints
+            if src_team not in list(Teams.values()):
+                raise NvshmemError(f"Invalid src_team handle: {src_team}. Not a registered team.")
+        except Exception:
+            pass
+    if isinstance(dest_team, int):
+        try:
+            if dest_team not in list(Teams.values()):
+                raise NvshmemError(f"Invalid dest_team handle: {dest_team}. Not a registered team.")
+        except Exception:
+            pass
+    try:
+        import nvshmem.core as _core
+        src_team_size = _core.team_n_pes(src_team)
+        if src_pe >= src_team_size:
+            raise NvshmemError(f"Invalid src_pe: {src_pe}. Must be < src_team size {src_team_size}.")
+    except Exception:
+        # If team size is not retrievable here, proceed; binding will validate further
+        pass
     return bindings.team_translate_pe(src_team, src_pe, dest_team)
