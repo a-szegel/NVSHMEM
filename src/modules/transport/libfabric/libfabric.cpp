@@ -67,7 +67,7 @@ static bool use_gdrcopy = false;
 
 static bool use_staged_atomics = false;
 threadSafeOpQueue nvshmemtLibfabricOpQueue;
-std::mutex gdrRecvMutex;
+std::recursive_mutex gdrRecvMutex;
 
 int nvshmemt_libfabric_gdr_process_amos(nvshmem_transport_t transport);
 int nvshmemt_libfabric_put_signal_completion(nvshmem_transport_t transport,
@@ -279,13 +279,18 @@ int perform_gdrcopy_amo(nvshmem_transport_t transport, nvshmemt_libfabric_gdr_op
     T old_value, new_value;
     uint64_t num_retries = 0;
     nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)transport->state;
-    nvshmemt_libfabric_gdr_send_amo_op_t *received_op;
+    nvshmemt_libfabric_gdr_send_amo_op_t *received_op = &(op->send_amo);
     nvshmemt_libfabric_gdr_op_ctx_t *resp_op = NULL;
     nvshmemt_libfabric_memhandle_info_t *handle_info;
     volatile T *ptr;
     int status = 0;
-
-    received_op = &(op->send_amo);
+    /* Save op fields as registers to allow posting op as RX before TX */
+    int src_pe = op->send_amo.src_pe;
+    nvshmemt_libfabric_endpoint_t *ep = op->ep;
+    fi_addr_t src_addr = op->src_addr;
+    bool is_fetch_amo = received_op->op > NVSHMEMI_AMO_END_OF_NONFETCH;
+    uint64_t ret_flags = received_op->retflag;
+    void *ret_addr = received_op->ret_addr;
 
     handle_info = (nvshmemt_libfabric_memhandle_info_t *)nvshmemt_mem_handle_cache_get(
         transport, libfabric_state->cache, received_op->target_addr);
@@ -352,7 +357,12 @@ int perform_gdrcopy_amo(nvshmem_transport_t transport, nvshmemt_libfabric_gdr_op
     *ptr = new_value;
     STORE_BARRIER();
 
-    if (received_op->op > NVSHMEMI_AMO_END_OF_NONFETCH) {
+    /* Post recv before posting TX operations to avoid deadlocks */
+    status = fi_recv(op->ep->endpoint, (void *)op, NVSHMEM_STAGED_AMO_WIREDATA_SIZE,
+                     fi_mr_desc(libfabric_state->mr), FI_ADDR_UNSPEC, &op->ofi_context);
+    NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "Unable to re-post recv.\n");
+
+    if (is_fetch_amo) {
         do {
             resp_op = (nvshmemt_libfabric_gdr_op_ctx_t *)nvshmemtLibfabricOpQueue.getNextSend();
             status = resp_op == NULL ? -EAGAIN : 0;
@@ -362,37 +372,38 @@ int perform_gdrcopy_amo(nvshmem_transport_t transport, nvshmemt_libfabric_gdr_op
         NVSHMEMI_NULL_ERROR_JMP(resp_op, status, NVSHMEMX_ERROR_INTERNAL, out,
                                 "Unable to respond to atomic request.\n");
         resp_op->ret_amo.elem.data = old_value;
-        resp_op->ret_amo.elem.flag = received_op->retflag;
-        resp_op->ret_amo.ret_addr = received_op->ret_addr;
+        resp_op->ret_amo.elem.flag = ret_flags;
+        resp_op->ret_amo.ret_addr = ret_addr;
         resp_op->type = NVSHMEMT_LIBFABRIC_ACK;
 
         do {
-            status = fi_send(op->ep->endpoint, (void *)resp_op, NVSHMEM_STAGED_AMO_WIREDATA_SIZE,
-                             fi_mr_desc(libfabric_state->mr), op->src_addr, &resp_op->ofi_context);
+            status = fi_send(ep->endpoint, (void *)resp_op, NVSHMEM_STAGED_AMO_WIREDATA_SIZE,
+                             fi_mr_desc(libfabric_state->mr), src_addr, &resp_op->ofi_context);
         } while (try_again(transport, &status, &num_retries));
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
                               "Unable to respond to atomic request.\n");
         op->ep->submitted_ops++;
     }
 
-    status = gdrcopy_amo_ack(transport, op->ep, op->src_addr, sequence_count, op->send_amo.src_pe);
+    status = gdrcopy_amo_ack(transport, ep, src_addr, sequence_count, src_pe);
 out:
     return status;
 }
 
 int nvshmemt_libfabric_gdr_process_amo(nvshmem_transport_t transport,
-                                       nvshmemt_libfabric_gdr_op_ctx_t *op) {
+                                       nvshmemt_libfabric_gdr_op_ctx_t *op,
+                                       uint32_t sequence_count) {
     int status = 0;
 
     switch (op->send_amo.size) {
         case 2:
-            status = perform_gdrcopy_amo<uint16_t>(transport, op, NVSHMEM_STAGED_AMO_SEQ_NUM);
+            status = perform_gdrcopy_amo<uint16_t>(transport, op, sequence_count);
             break;
         case 4:
-            status = perform_gdrcopy_amo<uint32_t>(transport, op, NVSHMEM_STAGED_AMO_SEQ_NUM);
+            status = perform_gdrcopy_amo<uint32_t>(transport, op, sequence_count);
             break;
         case 8:
-            status = perform_gdrcopy_amo<uint64_t>(transport, op, NVSHMEM_STAGED_AMO_SEQ_NUM);
+            status = perform_gdrcopy_amo<uint64_t>(transport, op, sequence_count);
             break;
         default:
             NVSHMEMI_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
@@ -435,17 +446,25 @@ int nvshmemt_libfabric_gdr_process_amos(nvshmem_transport_t transport) {
     op = (nvshmemt_libfabric_gdr_op_ctx_t *)nvshmemtLibfabricOpQueue.getNextRecv();
     while (op) {
         if (op->type == NVSHMEMT_LIBFABRIC_SEND) {
-            status = nvshmemt_libfabric_gdr_process_amo(transport, op);
+            status = nvshmemt_libfabric_gdr_process_amo(transport, op, NVSHMEM_STAGED_AMO_SEQ_NUM);
+            NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+                                  "Unable to process atomic.\n");
+            /* Reposts recv in perform_gdrcopy_amo() */
+        } else if (op->type == NVSHMEMT_LIBFABRIC_MATCH) {
+            status = nvshmemt_libfabric_gdr_process_amo(transport, op, op->send_amo.sequence_count);
+            NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+                                  "Unable to process atomic.\n");
+            /* Reposts recv in perform_gdrcopy_amo() */
         } else {
             status = nvshmemt_libfabric_gdr_process_ack(transport, op);
+            NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+                                  "Unable to process atomic.\n");
+            status = fi_recv(op->ep->endpoint, (void *)op, NVSHMEM_STAGED_AMO_WIREDATA_SIZE,
+                             fi_mr_desc(libfabric_state->mr), FI_ADDR_UNSPEC, &op->ofi_context);
+            NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
+                                  "Unable to re-post recv.\n");
         }
 
-        NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "Unable to process atomic.\n");
-        status = fi_recv(op->ep->endpoint, (void *)op, NVSHMEM_STAGED_AMO_WIREDATA_SIZE,
-                         fi_mr_desc(libfabric_state->mr), FI_ADDR_UNSPEC, &op->ofi_context);
-        if (status) {
-            NVSHMEMI_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "Unable to re-post recv.\n");
-        }
         op = (nvshmemt_libfabric_gdr_op_ctx_t *)nvshmemtLibfabricOpQueue.getNextRecv();
     }
 out:
@@ -459,19 +478,17 @@ nvshmemt_libfabric_gdr_op_ctx_t *nvshmemt_inplace_copy_sig_op_to_gdr_op(
     uint64_t sig_val = sig_op->sig_val;
     void *target_addr = sig_op->target_addr;
     uint32_t src_pe = sig_op->src_pe;
+    uint32_t sequence_count = sig_op->sequence_count;
 
     amo = (nvshmemt_libfabric_gdr_op_ctx_t *)sig_op;
     amo->ep = ep;
+    amo->type = NVSHMEMT_LIBFABRIC_MATCH;
     amo->send_amo.op = (nvshmemi_amo_t)op;
     amo->send_amo.target_addr = target_addr;
     amo->send_amo.swap_add = sig_val;
     amo->send_amo.src_pe = src_pe;
-
-    /* Both send_amo.size, and type are not required to be set b/c
-     * the templated atomic operation  perform_gdrcopy_amo<uint64_t>()
-     * is called in nvshmemt_libfabric_put_signal_completion(), avoid
-     * setting them to save instructions.
-     */
+    amo->send_amo.size = 8;
+    amo->send_amo.sequence_count = sequence_count;
 
     return amo;
 }
@@ -479,12 +496,10 @@ nvshmemt_libfabric_gdr_op_ctx_t *nvshmemt_inplace_copy_sig_op_to_gdr_op(
 int nvshmemt_libfabric_put_signal_completion(nvshmem_transport_t transport,
                                              nvshmemt_libfabric_endpoint_t *ep,
                                              struct fi_cq_data_entry *entry, fi_addr_t *addr) {
-    nvshmemt_libfabric_state_t *libfabric_state = (nvshmemt_libfabric_state_t *)transport->state;
     nvshmemt_libfabric_gdr_signal_op *sig_op = NULL;
     nvshmemt_libfabric_gdr_op_ctx_t *op = NULL;
     bool is_write_comp = entry->flags & FI_REMOTE_CQ_DATA;
     int status = 0, progress_count;
-    uint32_t sequence_count = 0;
     uint64_t map_key;
     std::unordered_map<uint64_t, std::pair<nvshmemt_libfabric_gdr_op_ctx_t *, int>>::iterator iter;
 
@@ -495,14 +510,12 @@ int nvshmemt_libfabric_put_signal_completion(nvshmem_transport_t transport,
     }
 
     if (is_write_comp) {
-        sequence_count = (uint32_t)entry->data;
-        map_key = *addr << 32 | sequence_count;
+        map_key = *addr << 32 | (uint32_t)entry->data;
         progress_count = -1;
     } else {
         sig_op = (nvshmemt_libfabric_gdr_signal_op *)container_of(
             entry->op_context, nvshmemt_libfabric_gdr_op_ctx_t, ofi_context);
-        sequence_count = sig_op->sequence_count;
-        map_key = *addr << 32 | sequence_count;
+        map_key = *addr << 32 | sig_op->sequence_count;
         progress_count = (int)sig_op->num_writes;
 
         /* The EFA provider has an inline send size of 32 bytes.
@@ -529,14 +542,9 @@ int nvshmemt_libfabric_put_signal_completion(nvshmem_transport_t transport,
         if (is_write_comp) {
             op = iter->second.first;
         }
-        gdrRecvMutex.lock();
-        status = perform_gdrcopy_amo<uint64_t>(transport, op, sequence_count);
-        gdrRecvMutex.unlock();
-        NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
-                              "Error in put_signal_completion gdrcopy signaling operation.\n");
+
+        nvshmemtLibfabricOpQueue.putToRecv(op);
         ep->proxy_put_signal_comp_map->erase(iter);
-        status = fi_recv(ep->endpoint, op, NVSHMEM_STAGED_AMO_WIREDATA_SIZE,
-                         fi_mr_desc(libfabric_state->mr), FI_ADDR_UNSPEC, &op->ofi_context);
     }
 
 out:
