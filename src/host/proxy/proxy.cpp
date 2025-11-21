@@ -1310,8 +1310,12 @@ inline void progress_channels(proxy_state_t *proxy_state) {
                         NVSHMEMI_NZ_EXIT(status, "error in process_channel_inline<char>\n");
                         break;
                     case NVSHMEMI_OP_FENCE:
-                    case NVSHMEMI_OP_FENCE_QP:
                         TRACE(NVSHMEM_PROXY, "host proxy: received FENCE \n");
+                        status = process_channel_fence(proxy_state, ch);
+                        NVSHMEMI_NZ_EXIT(status, "error in process_channel_fence\n");
+                        break;
+                    case NVSHMEMI_OP_FENCE_QP:
+                        TRACE(NVSHMEM_PROXY, "host proxy: received QP FENCE \n");
                         status = process_channel_qp_fence(proxy_state, ch);
                         NVSHMEMI_NZ_EXIT(status, "error in process_channel_qp_fence\n");
                         break;
