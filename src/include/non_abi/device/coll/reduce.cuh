@@ -1079,6 +1079,7 @@ __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void gpu_rdxn_recexch_t
             nvshmemi_fence<nvshmemi_threadgroup_thread>();
             nvshmemi_signal_for_barrier<long>((long *)(pSync + rank), sync_counter[0],
                                               step1_sendto);
+            nvshmemi_transfer_fence<nvshmemi_threadgroup_thread>(NVSHMEMX_PE_ALL, NULL, 1);
         }
     } else if (step1_nrecvs != 0) {
         for (int i = 0; i < step1_nrecvs; i += 1) {
@@ -1120,6 +1121,8 @@ __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void gpu_rdxn_recexch_t
                                                   step2_nbrs[phase][i]);
             }
 
+            nvshmemi_transfer_fence<nvshmemi_threadgroup_thread>(NVSHMEMX_PE_ALL, NULL, 1);
+
             for (int i = 0; i < k - 1; i += 1) {
                 nvshmemi_wait_until<uint64_t>((uint64_t *)(pSync + step2_nbrs[phase][i]),
                                               NVSHMEM_CMP_GE, sync_counter[0]);
@@ -1145,6 +1148,7 @@ __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void gpu_rdxn_recexch_t
             nvshmemi_signal_for_barrier<long>((long *)(pSync + rank), sync_counter[0],
                                               step1_recvfrom[i]);
         }
+        nvshmemi_transfer_fence<nvshmemi_threadgroup_thread>(NVSHMEMX_PE_ALL, NULL, 1);
     } else if (step1_sendto != -1) {
         if (!myIdx)
             nvshmemi_wait_until<uint64_t>((uint64_t *)(pSync + step1_sendto), NVSHMEM_CMP_GE,

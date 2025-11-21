@@ -75,6 +75,8 @@ __device__ void nvshmemi_team_creation_state_barrier(
                                          remote_pe);
     }
 
+    nvshmemi_transfer_fence<nvshmemi_threadgroup_thread>(NVSHMEMX_PE_ALL, NULL, 1);
+
     do {
         for (int i = 0; i < myteam->size; i++) {
             int global_pe_index = myteam->pe_mapping[i];
