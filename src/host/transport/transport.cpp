@@ -432,11 +432,18 @@ int nvshmemi_setup_connections(nvshmemi_state_t *state) {
             tcurr->host_ops.connect_endpoints(tcurr, selected_devices, found_devices, NULL, 0);
         NVSHMEMI_NZ_ERROR_JMP(current_status, NVSHMEMX_ERROR_INTERNAL, handle_transport_error,
                               "connect EPS failed \n");
-        current_status = nvshmemi_boot_handle.barrier(&nvshmemi_boot_handle);
-        NVSHMEMI_NZ_ERROR_JMP(current_status, NVSHMEMX_ERROR_INTERNAL, handle_transport_error,
-                              "barrier failed \n");
 
     handle_transport_error:
+        int barrier_stat = nvshmemi_boot_handle.barrier(&nvshmemi_boot_handle);
+
+        if (barrier_stat != NVSHMEMX_SUCCESS) {
+            NVSHMEMI_ERROR_PRINT("barrier failed\n");
+
+	    if (current_status == NVSHMEMX_SUCCESS) {
+                current_status = barrier_stat;
+            }
+        }
+
         if (current_status != NVSHMEMX_SUCCESS) {
             nvshmemi_transport_finalize_one(state, i);
             status |= current_status;

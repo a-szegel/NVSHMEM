@@ -178,7 +178,7 @@ void *nvshmemt_mem_handle_cache_get_by_idx(struct transport_mem_handle_info_cach
     return cache->cache[idx];
 }
 size_t nvshmemt_mem_handle_cache_get_size(struct transport_mem_handle_info_cache *cache) {
-    return cache->size;
+    return cache ? cache->size : 0;
 }
 
 int nvshmemt_mem_handle_cache_remove(nvshmem_transport_t t,
