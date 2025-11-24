@@ -1827,7 +1827,11 @@ void *nvshmemi_symmetric_heap_vidmem_dynamic_vmm::allocate_symmetric_memory(size
 
     ptr = allocate_virtual_memory_from_mspace(size, count, alignment, type);
     if ((size > 0) && (ptr == NULL)) {
-        status = allocate_physical_memory_to_heap(size + alignment);
+        if (type == NVSHMEMX_CALLOC) {
+            status = allocate_physical_memory_to_heap((count*size) + alignment);
+        } else {
+            status = allocate_physical_memory_to_heap(size + alignment);
+        }
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
                               "allocate_physical_memory_to_heap failed\n");
         ptr = allocate_virtual_memory_from_mspace(size, count, alignment, type);
@@ -2330,7 +2334,7 @@ void *nvshmem_calloc(size_t count, size_t size) {
         goto exit_and_return;
     }
 
-    if (NVSHMEMI_IS_NO_ACTION_BY_SIZE(size)) {
+    if (NVSHMEMI_IS_NO_ACTION_BY_SIZE(count*size)) {
         goto exit_and_return;
     }
 
