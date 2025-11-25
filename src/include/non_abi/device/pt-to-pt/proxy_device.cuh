@@ -272,7 +272,7 @@ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_FORCE_INLINE __device__ void transfer_dma
     req = (uint64_t *)((uint8_t *)buf_ptr + (idx & (CHANNEL_BUF_SIZE - 1)));
     curr_flag = !((idx >> nvshmemi_device_state_d.proxy_channel_buf_logsize) & 1);
     *((volatile uint64_t *)req) =
-        (uint64_t)((static_cast<uint64_t>(qp_index) << 32) | (pe_u16 << 16) | curr_flag);
+        (uint64_t)((static_cast<uint64_t>(qp_index) << 32) | (static_cast<uint64_t>(pe_u16) << 16) | curr_flag);
 }
 
 /*XXX : Only no const version is used*/
@@ -366,7 +366,7 @@ NVSHMEMI_STATIC __device__ NVSHMEMI_DEVICE_ALWAYS_FORCE_INLINE void nvshmemi_pro
     req = (uint64_t *)((uint8_t *)buf_ptr + (idx & (CHANNEL_BUF_SIZE - 1)));
     curr_flag = !((idx >> nvshmemi_device_state_d.proxy_channel_buf_logsize) & 1);
     *((volatile uint64_t *)req) =
-        (uint64_t)((static_cast<uint64_t>(qp_index) << 32) | (pe_u16 << 16) | curr_flag);
+        (uint64_t)((static_cast<uint64_t>(qp_index) << 32) | (static_cast<uint64_t>(pe_u16) << 16) | curr_flag);
 
     /* put_signal_request_3
      * 32              | 8              | 8      | 8          | 8
