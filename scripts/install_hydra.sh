@@ -22,19 +22,19 @@ fi
 
 mkdir -p $srcdir
 cd $srcdir
-#Download hydra-4.0.2 source
-wget http://www.mpich.org/static/downloads/4.0.2/hydra-4.0.2.tar.gz
-gunzip hydra-4.0.2.tar.gz
-tar -xvf hydra-4.0.2.tar
+# Download hydra-4.3.2 source
+wget https://www.mpich.org/static/downloads/4.3.2/hydra-4.3.2.tar.gz
+gunzip hydra-4.3.2.tar.gz
+tar -xvf hydra-4.3.2.tar
 
-#Install hydra
-cd hydra-4.0.2
-touch aclocal.m4; 
-touch Makefile.am; 
-touch Makefile.in; 
-touch ./mpl/aclocal.m4; 
-touch ./mpl/Makefile.am; 
-touch ./mpl/Makefile.in;
+# Install hydra
+cd hydra-4.3.2
+touch aclocal.m4;
+touch Makefile.am;
+touch Makefile.in;
+touch ./modules/mpl/aclocal.m4;
+touch ./modules/mpl/Makefile.am;
+touch ./modules/mpl/Makefile.in;
 
 ./configure --prefix=$builddir --enable-cuda=no --enable-nvml=no
 make
