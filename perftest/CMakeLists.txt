@@ -1,4 +1,10 @@
 cmake_minimum_required(VERSION 3.19)
+
+# Set CMP0177 for path normalization in install() (CMake 3.31+)
+if(POLICY CMP0177)
+  cmake_policy(SET CMP0177 NEW)
+endif()
+
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 
 set(NVSHMEM_PERFTEST_TLD ${CMAKE_CURRENT_SOURCE_DIR})
