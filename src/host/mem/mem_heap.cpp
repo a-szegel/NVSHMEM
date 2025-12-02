@@ -1920,7 +1920,7 @@ void *nvshmemi_symmetric_heap_vidmem_dynamic_vmm::mmap_mem(void *buf_ptr, size_t
                               "Not enough space for mmaping buffer %p size %zu\n", buf_ptr, size);
         buf_start = (char *)mmap_base_ - get_mmap_allocated_range() - size;
         ptr = (void *)buf_start;
-        INFO(NVSHMEM_MEM, "Need to extend mmap space. start ptr: %p for %zu bytes",
+        INFO(NVSHMEM_MEM, "type: %s Need to extend mmap space. start ptr: %p for %zu bytes",
              typeid(decltype(this)).name(), buf_start, size);
     }
 
