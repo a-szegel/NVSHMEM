@@ -62,7 +62,7 @@ foreach(LINE IN LISTS PYTHON_LINE_LIST)
     list(GET PYTHON_PAIR 0 PY_VER)
     list(GET PYTHON_PAIR 1 PY_EXEC)
     message(STATUS "Found Python3 ${PY_EXEC}")
-    set(CUDA_VERSIONS "11" "12" "13")
+    set(CUDA_VERSIONS "12" "13")
 
     foreach(CUDA_VER IN LISTS CUDA_VERSIONS)
         set(WHEEL_TARGET build_nvshmem4py_wheel_cu${CUDA_VER}_${PY_VER})
