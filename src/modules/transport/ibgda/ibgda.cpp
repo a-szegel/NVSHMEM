@@ -2340,6 +2340,8 @@ static int ibgda_create_dct_shared_objects(nvshmemt_ibgda_state_t *ibgda_state,
     struct ibv_ah_attr ah_attr;
     struct mlx5dv_obj dv;
 
+    memset(&ah_attr, 0, sizeof(ah_attr));
+
     bool support_half_av_seg;
     int hca_support_compact_address_vector;
 
