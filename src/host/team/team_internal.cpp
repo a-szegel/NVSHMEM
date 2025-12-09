@@ -67,35 +67,38 @@ using namespace nvls;
 
 static long *nvshmemi_team_get_sync_counter(nvshmemi_team_t *team);
 
-long nvshmemi_max_teams;
+long nvshmemi_max_teams = 0;
 static long N_PSYNC_BYTES = 32; /* N_PSYNC_BYTES * CHAR_NBIT == max_teams supported */
 
-nvshmemi_team_t *nvshmemi_team_world;
-nvshmemi_team_t *nvshmemi_team_shared;
-nvshmemi_team_t *nvshmemi_team_node;
-nvshmemi_team_t *nvshmemi_team_same_mype_node;
-nvshmemi_team_t *nvshmemi_team_same_gpu;
-nvshmemi_team_t *nvshmemi_team_gpu_leaders;
+nvshmemi_team_t *nvshmemi_team_world = nullptr;
+nvshmemi_team_t *nvshmemi_team_shared = nullptr;
+nvshmemi_team_t *nvshmemi_team_node = nullptr;
+nvshmemi_team_t *nvshmemi_team_same_mype_node = nullptr;
+nvshmemi_team_t *nvshmemi_team_same_gpu = nullptr;
+nvshmemi_team_t *nvshmemi_team_gpu_leaders = nullptr;
 
-nvshmemi_team_t *nvshmemi_device_team_world, *nvshmemi_device_team_shared,
-    *nvshmemi_device_team_node, *nvshmemi_device_team_same_mype_node,
-    *nvshmemi_device_team_same_gpu, *nvshmemi_device_team_gpu_leaders;
+nvshmemi_team_t *nvshmemi_device_team_world = nullptr,
+                *nvshmemi_device_team_shared = nullptr,
+                *nvshmemi_device_team_node = nullptr,
+                *nvshmemi_device_team_same_mype_node = nullptr,
+                *nvshmemi_device_team_same_gpu = nullptr,
+                *nvshmemi_device_team_gpu_leaders = nullptr;
 
-nvshmemi_team_t **nvshmemi_team_pool;
-long *nvshmemi_psync_pool;
-long *nvshmemi_sync_counter;
+nvshmemi_team_t **nvshmemi_team_pool = nullptr;
+long *nvshmemi_psync_pool = nullptr;
+long *nvshmemi_sync_counter = nullptr;
 
-nvshmemi_team_t **nvshmemi_device_team_pool;
+nvshmemi_team_t **nvshmemi_device_team_pool = nullptr;
 
-static unsigned char *psync_pool_avail;
-static unsigned char *psync_pool_avail_reduced;
-static unsigned char *device_psync_pool_avail;
-static unsigned char *device_psync_pool_avail_reduced;
+static unsigned char *psync_pool_avail = nullptr;
+static unsigned char *psync_pool_avail_reduced = nullptr;
+static unsigned char *device_psync_pool_avail = nullptr;
+static unsigned char *device_psync_pool_avail_reduced = nullptr;
 
-static int *team_ret_val;
-static int *team_ret_val_reduced;
-static int *device_team_ret_val;
-static int *device_team_ret_val_reduced;
+static int *team_ret_val = nullptr;
+static int *team_ret_val_reduced = nullptr;
+static int *device_team_ret_val = nullptr;
+static int *device_team_ret_val_reduced = nullptr;
 
 nvshmemi_team_creation_psync_t *nvshmemi_team_creation_psync = NULL;
 
@@ -981,6 +984,14 @@ int nvshmemi_team_init(void) {
     }
     INFO(NVSHMEM_INIT, "P2P list: %s", ss.str().c_str());
 
+    /* allocate the team */
+    if (nvshmemi_team_allocate_team(&nvshmemi_team_shared, &nvshmemi_device_team_shared,
+                                    n_p2p_pes) != NVSHMEMX_SUCCESS) {
+        return NVSHMEMX_ERROR_OUT_OF_MEMORY;
+    }
+    nvshmemi_team_shared->team_idx = NVSHMEM_TEAM_SHARED_INDEX;
+    NVSHMEMI_TEAM_DUP_INITIALIZER(nvshmemi_team_shared, NVSHMEM_TEAM_SHARED_INDEX);
+
     /* Make sure that n_p2p_pes is same for all PEs to form TEAM_SHARED */
     int *n_p2p_pes_all = (int *)malloc(nvshmemi_team_world->size * sizeof(int));
     int *p2p_pe_list_all = (int *)malloc(sizeof(int) * n_p2p_pes * nvshmemi_team_world->size);
@@ -1017,12 +1028,6 @@ int nvshmemi_team_init(void) {
     }
 
     /* Initialize NVSHMEM_TEAM_SHARED */
-    if (nvshmemi_team_allocate_team(&nvshmemi_team_shared, &nvshmemi_device_team_shared,
-                                    n_p2p_pes) != NVSHMEMX_SUCCESS) {
-        return NVSHMEMX_ERROR_OUT_OF_MEMORY;
-    }
-    nvshmemi_team_shared->team_idx = NVSHMEM_TEAM_SHARED_INDEX;
-    NVSHMEMI_TEAM_DUP_INITIALIZER(nvshmemi_team_shared, NVSHMEM_TEAM_SHARED_INDEX);
     nvshmemi_team_shared->my_pe = my_idx_in_p2p_list;
     nvshmemi_team_shared->start = p2p_pe_list[0];
     nvshmemi_team_shared->stride = n_p2p_pes > 1 ? (p2p_pe_list[1] - p2p_pe_list[0]) : 1;
