@@ -2155,6 +2155,7 @@ out:
 int nvshmemi_symmetric_heap_vidmem_dynamic_vmm::check_user_buffer_for_mmap(
     void *ptr, size_t &size, unsigned int *ptr_mem_type) {
     int status = 0;
+    int cuMemRelease_status = 0;
     unsigned int ptrAttr;
     nvshmemi_state_t *state = get_state();
     size_t userAllocGran;
@@ -2162,10 +2163,17 @@ int nvshmemi_symmetric_heap_vidmem_dynamic_vmm::check_user_buffer_for_mmap(
     CUmemGenericAllocationHandle userAllocHandle;
 
     status = (size == 0);
-    NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_SYMMETRY, out, "size argument is zero\n");
+    NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_SYMMETRY, return_out, "size argument is zero\n");
 
     status = is_symmetric(size);
-    NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_SYMMETRY, out, "symmetry check for size failed\n");
+    NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_SYMMETRY, return_out, "symmetry check for size failed\n");
+
+    status = size % mem_granularity_;
+    NVSHMEMI_NZ_ERROR_JMP(
+        status, NVSHMEMX_ERROR_INVALID_VALUE, return_out,
+        "user buffer %p size %zu is not a multiple of heap granularity %zu. Please adjust the user "
+        "buffer size or update NVSHMEM_CUMEM_GRANULARITY",
+        ptr, size, mem_granularity_);
 
     // check if buffer (ptr) is allocated from cuMemCreate
     status = CUPFN(nvshmemi_cuda_syms, cuMemRetainAllocationHandle(&userAllocHandle, ptr));
@@ -2228,17 +2236,14 @@ int nvshmemi_symmetric_heap_vidmem_dynamic_vmm::check_user_buffer_for_mmap(
     NVSHMEMI_NE_ERROR_JMP(status, CUDA_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
                           "Failed to get allocation granularity of user buffer %p\n", ptr);
 
-    if (size % mem_granularity_) {
-        WARN(
-            "user buffer %p size %zu is not a multiple of heap granularity %zu, "
-            "rounding up to %zu\n",
-            ptr, size, mem_granularity_, ((size + mem_granularity_ - 1) / mem_granularity_) * mem_granularity_);
-        size = ((size + mem_granularity_ - 1) / mem_granularity_) * mem_granularity_;
-    }
 out:
-    status = CUPFN(nvshmemi_cuda_syms, cuMemRelease(userAllocHandle));
-    NVSHMEMI_NE_ERROR_JMP(status, CUDA_SUCCESS, NVSHMEMX_ERROR_INTERNAL, out,
+    cuMemRelease_status = CUPFN(nvshmemi_cuda_syms, cuMemRelease(userAllocHandle));
+    if (!status) {
+       status = cuMemRelease_status;
+       NVSHMEMI_NE_ERROR_JMP(cuMemRelease_status, CUDA_SUCCESS, NVSHMEMX_ERROR_INTERNAL, return_out,
                           "cuMemRelease failed \n");
+    }
+return_out:
     return status;
 }
 
