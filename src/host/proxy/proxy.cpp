@@ -957,6 +957,7 @@ inline int process_channel_qp_fence(proxy_state_t *proxy_state, proxy_channel_t 
         }
         for (int j = 0; j < num_pe; j++) {
             int pe = base_pe + j;
+            NVSHMEMU_PE_TRANSLATE(pe);
             struct nvshmem_transport *tcurr = proxy_state->transport[pe];
             if (tcurr->host_ops.fence)
                 status = tcurr->host_ops.fence(tcurr, pe, qp_index, is_multi);
@@ -1015,6 +1016,7 @@ inline int process_channel_qp_quiet(proxy_state_t *proxy_state, proxy_channel_t 
         }
         for (int j = start_pe; j < start_pe + num_pe; j++) {
             int pe = j % state->npes;
+            NVSHMEMU_PE_TRANSLATE(pe);
             struct nvshmem_transport *tcurr = proxy_state->transport[pe];
             if (tcurr->host_ops.quiet)
                 status = tcurr->host_ops.quiet(tcurr, pe, qp_sync_req_0->qp_index);
