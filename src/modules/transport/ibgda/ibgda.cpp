@@ -3121,8 +3121,7 @@ static int ibgda_setup_rc_endpoints(nvshmemt_ibgda_state_t *ibgda_state,
         }
     }
 
-    status = t->boot_handle->alltoall((void *)local_rc_handles,
-                                      (void *)peer_ep_handles,
+    status = t->boot_handle->alltoall((void *)local_rc_handles, (void *)peer_ep_handles,
                                       sizeof(*local_rc_handles) * num_eps_per_pe, t->boot_handle);
     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "alltoall of rc failed.");
 
@@ -3138,8 +3137,7 @@ static int ibgda_setup_rc_endpoints(nvshmemt_ibgda_state_t *ibgda_state,
                   "Resetting and initializing RC #%d with qp_idx #%d QPN: %d", ep_index,
                   device->rc.eps[ep_index]->user_index, device->rc.eps[ep_index]->qpn);
             TRACE(ibgda_state->log_level, "local QPN: %d, remote handle QPN: %d",
-                  device->rc.eps[ep_index]->qpn,
-                  peer_ep_handles[peer_handle_index].qpn);
+                  device->rc.eps[ep_index]->qpn, peer_ep_handles[peer_handle_index].qpn);
             status = ibgda_qp_rst2init(device->rc.eps[ep_index], device, portid);
             NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
                                   "ibgda_qp_rst2init failed on RC #%d.", ep_index);
@@ -3209,8 +3207,8 @@ static int ibgda_populate_rc_gpu_data(nvshmemt_ibgda_state_t *ibgda_state, nvshm
 
                 ibgda_get_device_qp(ibgda_state, &rc_h[qp_index], device, ep, ep_index, i);
                 TRACE(ibgda_state->log_level,
-                    "Populating RC at ep_index #%d, qp_idx #%d, qpn: %u, qp_type: %u", ep_index,
-                    qp_index, rc_h[qp_index].qpn, rc_h[qp_index].qp_type);
+                      "Populating RC at ep_index #%d, qp_idx #%d, qpn: %u, qp_type: %u", ep_index,
+                      qp_index, rc_h[qp_index].qpn, rc_h[qp_index].qp_type);
 
                 rc_h[qp_index].tx_wq.cq = &cq_d[my_cq_index];
                 ibgda_get_device_cq(&cq_h[my_cq_index], ep->send_cq);
@@ -3241,9 +3239,8 @@ static int ibgda_copy_rc_gpu_data(nvshmemt_ibgda_state_t *ibgda_state,
 
     /* Copy host side structs to device side structs start */
     if (num_rc_handles > 0) {
-        status = cudaMemcpyAsync(rc_d, (const void *)rc_h,
-                                 sizeof(*rc_h) * num_rc_handles, cudaMemcpyHostToDevice,
-                                 ibgda_state->my_stream);
+        status = cudaMemcpyAsync(rc_d, (const void *)rc_h, sizeof(*rc_h) * num_rc_handles,
+                                 cudaMemcpyHostToDevice, ibgda_state->my_stream);
         NVSHMEMI_NE_ERROR_JMP(status, cudaSuccess, NVSHMEMX_ERROR_INTERNAL, out, "rc copy err.");
     }
     /* Copy host side structs to device side structs end */
@@ -3346,7 +3343,11 @@ static int ibgda_setup_cq_gpu_state(nvshmemt_ibgda_state_t *ibgda_state, nvshmem
 
     /* Allocate CQ device memory start */
     if (*cq_d != NULL) {
-        TRACE(ibgda_state->log_level, "Rellocating CQ device memory with handle count %d and size %zu last handle count %d and size %zu", *num_cq_handles, *num_cq_handles * sizeof(**cq_d), ibgda_state->last_num_cqs, ibgda_state->last_num_cqs * sizeof(**cq_d));
+        TRACE(ibgda_state->log_level,
+              "Rellocating CQ device memory with handle count %d and size %zu last handle count %d "
+              "and size %zu",
+              *num_cq_handles, *num_cq_handles * sizeof(**cq_d), ibgda_state->last_num_cqs,
+              ibgda_state->last_num_cqs * sizeof(**cq_d));
         status = cudaMalloc(&cq_d_temp, *num_cq_handles * sizeof(**cq_d));
         cudaMemcpyAsync(cq_d_temp, *cq_d, ibgda_state->last_num_cqs * sizeof(**cq_d),
                         cudaMemcpyDeviceToDevice, ibgda_state->my_stream);
@@ -3356,7 +3357,9 @@ static int ibgda_setup_cq_gpu_state(nvshmemt_ibgda_state_t *ibgda_state, nvshmem
         cudaFree(*cq_d);
         *cq_d = cq_d_temp;
     } else {
-        TRACE(ibgda_state->log_level, "Allocating CQ device memory with handle count %d and size %zu", *num_cq_handles, *num_cq_handles * sizeof(**cq_d));
+        TRACE(ibgda_state->log_level,
+              "Allocating CQ device memory with handle count %d and size %zu", *num_cq_handles,
+              *num_cq_handles * sizeof(**cq_d));
         status = cudaMalloc(cq_d, *num_cq_handles * sizeof(**cq_d));
     }
     NVSHMEMI_NE_ERROR_JMP(status, cudaSuccess, NVSHMEMX_ERROR_OUT_OF_MEMORY, out, "cq cudaM err.");
@@ -3370,9 +3373,8 @@ static int ibgda_copy_cq_gpu_data(nvshmemt_ibgda_state_t *ibgda_state,
                                   nvshmemi_ibgda_device_cq_t *cq_d, int num_cq_handles) {
     int status = 0;
     /* Copy host side structs to device side structs start */
-    status = cudaMemcpyAsync(cq_d, (const void *)cq_h,
-                             sizeof(*cq_h) * num_cq_handles, cudaMemcpyHostToDevice,
-                             ibgda_state->my_stream);
+    status = cudaMemcpyAsync(cq_d, (const void *)cq_h, sizeof(*cq_h) * num_cq_handles,
+                             cudaMemcpyHostToDevice, ibgda_state->my_stream);
     NVSHMEMI_NE_ERROR_JMP(status, cudaSuccess, NVSHMEMX_ERROR_INTERNAL, out, "cq copy err.");
     /* Copy host side structs to device side structs end */
     ibgda_state->last_num_cqs = num_cq_handles;
@@ -3678,11 +3680,10 @@ static int ibgda_setup_gpu_state(nvshmem_transport_t t) {
 
     TRACE(ibgda_state->log_level, "Populated DCT GPU data");
 
-    status = ibgda_populate_dci_gpu_data(ibgda_state, t, dci_h, dci_d,
-                                            ibgda_state->device_state_cache->cq_h, cq_d,
-                                            num_dci_handles);
+    status = ibgda_populate_dci_gpu_data(
+        ibgda_state, t, dci_h, dci_d, ibgda_state->device_state_cache->cq_h, cq_d, num_dci_handles);
     NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
-                            "ibgda_populate_dci_gpu_data failed.");
+                          "ibgda_populate_dci_gpu_data failed.");
 
     TRACE(ibgda_state->log_level, "Populated DCI GPU data");
 
@@ -3916,7 +3917,7 @@ static int ibgda_connect_rc_only(nvshmemt_ibgda_state_t *ibgda_state, nvshmem_tr
         status = ibgda_allocate_rc_structures(t, device, num_qps_per_device * n_pes);
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
                               "ibgda_allocate_rc_structures failed.\n");
-        }
+    }
     for (int i = 0; i < num_qps; i++) {
         /* cur_qp_index is updated in ibgda_setup_rc_endpoints */
         out_qp_indices[i] = ibgda_state->cur_qp_index;
@@ -3927,7 +3928,7 @@ static int ibgda_connect_rc_only(nvshmemt_ibgda_state_t *ibgda_state, nvshmem_tr
 
         status = ibgda_setup_rc_endpoints(ibgda_state, device, portid, t, 1);
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out,
-                            "ibgda_setup_rc_endpoints failed.\n");
+                              "ibgda_setup_rc_endpoints failed.\n");
         ibgda_state->last_device_index++;
     }
 
@@ -4101,7 +4102,8 @@ int nvshmemt_ibgda_finalize(nvshmem_transport_t transport) {
             // \n"); For now, don't exit early. We need to free all the devices and zero out the
             // pointers for reinitalization.
             if (status) {
-                NVSHMEMI_WARN_PRINT("ibv_dealloc_pd failed for device %d Err: %d:%s.\n", i, errno, strerror(errno));
+                INFO(ibgda_state->log_level, "ibv_dealloc_pd failed for device %d Err: %d:%s.\n", i,
+                     errno, strerror(errno));
             }
         }
 
@@ -4112,7 +4114,8 @@ int nvshmemt_ibgda_finalize(nvshmem_transport_t transport) {
             // For now, don't exit early. We need to free all the devices and zero out the pointers
             // for reinitalization.
             if (status) {
-                NVSHMEMI_WARN_PRINT("ibv_close_device failed for device %d Err: %d:%s.\n", i, errno, strerror(errno));
+                NVSHMEMI_WARN_PRINT("ibv_close_device failed for device %d Err: %d:%s.\n", i, errno,
+                                    strerror(errno));
             }
         }
         status = 0;

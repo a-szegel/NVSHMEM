@@ -91,25 +91,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_reducescatter_allpush_thr
 template <typename TYPE, rdxn_ops_t OP, threadgroup_t SCOPE>
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_reducescatter_nvls_allpush_threadgroup(
     nvshmem_team_t team, TYPE *dest, const TYPE *source, int source_offset, size_t nreduce) {
-#if defined __clang_llvm_bitcode_lib__
-    if (__nvvm_reflect("__CUDA_ARCH") >= 900) {
-        nvshmemi_team_t *teami = nvshmemi_device_state_d.team_pool[team];
-        TYPE *src_ptr = (TYPE *)nvshmemi_mc_ptr(teami, (void *)(source + source_offset));
-        nvshmemi_threadgroup_sync<SCOPE>();
-        nvshmemi_local_reduce_mcast_threadgroup<TYPE, OP, SCOPE>(dest, src_ptr, nreduce);
-        /* Since ld.red is done atomically on the NVSwitch, the value obtained into local dest
-         * ref for a given PE would be ready, right away. We can still have a case that after
-         * returning from this kernel, source buffer can be mutated on one PE, while another PE is
-         * still performing ld.red, causing data correctness issue. We don't however need to add
-         * threadfence_system for ordering since the subsequent load to source buffer will be
-         * ordered already to prior ld.reduce (RAR) by HW.
-         */
-        nvshmemi_sync_threadgroup<SCOPE>(team);
-    } else {
-        assert(0 && "Unsupported NVLS algo on this platform");
-    }
-#else
-#if __CUDA_ARCH__ >= 900 && CUDART_VERSION >= 12010
+#if __CUDA_ARCH__ >= 900 && CUDART_VERSION >= 12010 || defined(__clang_llvm_bitcode_lib__)
     nvshmemi_team_t *teami = nvshmemi_device_state_d.team_pool[team];
     TYPE *src_ptr = (TYPE *)nvshmemi_mc_ptr(teami, (void *)(source + source_offset));
     nvshmemi_threadgroup_sync<SCOPE>();
@@ -124,7 +106,6 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_reducescatter_nvls_allpus
     nvshmemi_sync_threadgroup<SCOPE>(team);
 #else
     assert(0 && "Unsupported NVLS algo on this platform");
-#endif
 #endif
 }
 

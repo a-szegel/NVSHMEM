@@ -1476,36 +1476,7 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_add_reduce_mcast_threadro
 template <typename TYPE, threadgroup_t SCOPE>
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_add_reduce_nvls_twoshot_threadgroup(
     nvshmem_team_t team, TYPE *dest, const TYPE *source, size_t nreduce) {
-#if defined __clang_llvm_bitcode_lib__
-    if (__nvvm_reflect("__CUDA_ARCH") >= 900) {
-        nvshmemi_team_t *teami = nvshmemi_device_state_d.team_pool[team];
-        int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
-        int my_idx_in_active_set = teami->my_pe;
-        /* Divide nreduce by team size and handle for the 3 cases */
-        int elems_per_pe = nreduce / teami->size;
-        int elems_remain = nreduce % teami->size;
-        // Case 1: elems_per_pe == 0 => GPU [size-1] does the work on nreduce
-        // Case 2: elems_per_pe != 0 and elems_remain != 0 => GPU [0-size-2] does elems_per_pe,
-        // GPU[size-1] does elems_per_pe + elems_remain Case 3: elems_per_pe != 0 and elems_remain
-        // == 0
-        // => all GPUs do work for elems_per_pe
-        int my_nelems = elems_per_pe;
-        if (my_idx_in_active_set == (teami->size - 1)) {
-            my_nelems = elems_per_pe + elems_remain;
-        }
-
-        if (my_nelems > 0) {
-            nvshmemi_add_reduce_mcast_threadroup<TYPE, SCOPE, 0>(
-                teami, dest + elems_per_pe * my_idx_in_active_set,
-                source + elems_per_pe * my_idx_in_active_set, my_nelems);
-        }
-
-        nvshmemi_barrier_threadgroup<SCOPE>(team);
-    } else {
-        assert(0 && "Unsupported NVLS on this platform\n");
-    }
-#else
-#if __CUDA_ARCH__ >= 900 && CUDART_VERSION >= 12010
+#if __CUDA_ARCH__ >= 900 && CUDART_VERSION >= 12010 || defined(__clang_llvm_bitcode_lib__)
     nvshmemi_team_t *teami = nvshmemi_device_state_d.team_pool[team];
     int my_idx_in_active_set = teami->my_pe;
     int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
@@ -1531,37 +1502,12 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_add_reduce_nvls_twoshot_t
 #else
     assert(0 && "Unsupported NVLS on this platform\n");
 #endif
-#endif
 }
 
 template <typename TYPE, threadgroup_t SCOPE>
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_add_reduce_nvls_oneshot_threadgroup(
     nvshmem_team_t team, TYPE *dest, const TYPE *source, size_t nreduce) {
-#if defined __clang_llvm_bitcode_lib__
-    if (__nvvm_reflect("__CUDA_ARCH") >= 900) {
-        nvshmemi_team_t *teami = nvshmemi_device_state_d.team_pool[team];
-        /* Assign nreduce for all PEs. It may lead to duplicate reduction, but avoid AG stage to
-         * communicate partial results as compared to two-shot */
-        int elems_per_pe = nreduce;
-        // Case 1: elems_per_pe == 0 => no GPUs do any work.
-        // Case 2: elems_per_pe != 0 => all GPUs do work for elems_per_pe
-        if (elems_per_pe > 0) {
-            nvshmemi_add_reduce_mcast_threadroup<TYPE, SCOPE, 1>(teami, dest, source, elems_per_pe);
-        }
-
-        /**
-         * Using __threadfence_system() is an overkill since we store to local vidmem buffers at the
-         * end of ONESHOT add_reducast_mcast The only requirement is not reorder store with sync.
-         * Since this code is inlined, this requirement is important (non-inlined function call
-         * would automatically guarantee this). Since we use PTX for store, compiler should
-         * typically not reorder PTX. So opportunistically, we don't introduce membar.cta PTX here.
-         */
-        nvshmemi_sync_algo_threadgroup<SCOPE>(team);
-    } else {
-        assert(0 && "Unsupported NVLS on this platform\n");
-    }
-#else
-#if __CUDA_ARCH__ >= 900 && CUDART_VERSION >= 12010
+#if __CUDA_ARCH__ >= 900 && CUDART_VERSION >= 12010 || defined(__clang_llvm_bitcode_lib__)
     nvshmemi_team_t *teami = nvshmemi_device_state_d.team_pool[team];
     /* Assign nreduce for all PEs. It may lead to duplicate reduction, but avoid AG stage to
      * communicate partial results as compared to two-shot */
@@ -1582,7 +1528,6 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_add_reduce_nvls_oneshot_t
     nvshmemi_sync_algo_threadgroup<SCOPE>(team);
 #else
     assert(0 && "Unsupported NVLS on this platform\n");
-#endif
 #endif
 }
 
