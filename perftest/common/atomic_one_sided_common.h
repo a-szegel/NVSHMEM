@@ -210,8 +210,8 @@
                                                                                                 \
         cudaStreamSynchronize(stream);                                                          \
                                                                                                 \
-        nvshmem_barrier_all();                                                                  \
         CUDA_CHECK(cudaMemcpy(flag_d, &flag_init_var, sizeof(TYPE), cudaMemcpyHostToDevice));   \
+        nvshmem_barrier_all();                                                                  \
         cudaEventRecord(start, stream);                                                         \
         LAUNCH_KERNEL(TYPE_NAME, AMO, args_2, stream)                                           \
         cudaEventRecord(stop, stream);                                                          \
@@ -259,8 +259,8 @@
                                                                                                   \
         cudaStreamSynchronize(stream);                                                            \
                                                                                                   \
-        nvshmem_barrier_all();                                                                    \
         CUDA_CHECK(cudaMemcpy(flag_d, &flag_init_var, sizeof(TYPE), cudaMemcpyHostToDevice));     \
+        nvshmem_barrier_all();                                                                    \
         cudaEventRecord(start, stream);                                                           \
         LAUNCH_KERNEL(TYPE_NAME, AMO, args_2, stream)                                             \
         cudaEventRecord(stop, stream);                                                            \
