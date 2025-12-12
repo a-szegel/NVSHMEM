@@ -68,7 +68,7 @@ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE __device__ size_t get_psync_len_pe
        same way as in reduce. The other fator of 2 is because when using LL double the space is
        needed to fuse flag with data. Npes is added for p2p sync space. */
 
-    return (2 * NVSHMEMI_SYNC_SIZE +
+    return (4 * NVSHMEMI_SYNC_SIZE +
             nvshmemi_device_state_d.gpu_coll_env_params_var.reduce_scratch_size / sizeof(long) +
             NVSHMEMI_BCAST_SYNC_SIZE + fcollect_sync_size + 2 * NVSHMEMI_ALLTOALL_SYNC_SIZE +
             fcollect_ll128_sync_size + nvshmemi_device_state_d.npes);
@@ -135,33 +135,33 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE long *nvshmemi_team_get_psync(nvshmemi_
             return team_psync;
         case REDUCE:
             return &team_psync
-                [2 * NVSHMEMI_SYNC_SIZE +
+                [4 * NVSHMEMI_SYNC_SIZE +
                  (((nvshmemi_device_state_d.gpu_coll_env_params_var.reduce_scratch_size / 2) /
                    sizeof(long)) *
                   (team->rdxn_count % 2))];
         case BCAST:
-            return &team_psync[2 * NVSHMEMI_SYNC_SIZE +
+            return &team_psync[4 * NVSHMEMI_SYNC_SIZE +
                                nvshmemi_device_state_d.gpu_coll_env_params_var.reduce_scratch_size /
                                    sizeof(long)];
         case FCOLLECT:
-            return &team_psync[2 * NVSHMEMI_SYNC_SIZE +
+            return &team_psync[4 * NVSHMEMI_SYNC_SIZE +
                                nvshmemi_device_state_d.gpu_coll_env_params_var.reduce_scratch_size /
                                    sizeof(long) +
                                NVSHMEMI_BCAST_SYNC_SIZE];
         case ALLTOALL:
-            return &team_psync[2 * NVSHMEMI_SYNC_SIZE +
+            return &team_psync[4 * NVSHMEMI_SYNC_SIZE +
                                nvshmemi_device_state_d.gpu_coll_env_params_var.reduce_scratch_size /
                                    sizeof(long) +
                                NVSHMEMI_BCAST_SYNC_SIZE + psync_fcollect_len +
                                (NVSHMEMI_ALLTOALL_SYNC_SIZE * (team->alltoall_count % 2))];
         case FCOLLECT_128:
-            return &team_psync[2 * NVSHMEMI_SYNC_SIZE +
+            return &team_psync[4 * NVSHMEMI_SYNC_SIZE +
                                nvshmemi_device_state_d.gpu_coll_env_params_var.reduce_scratch_size /
                                    sizeof(long) +
                                NVSHMEMI_BCAST_SYNC_SIZE + psync_fcollect_len +
                                2 * NVSHMEMI_ALLTOALL_SYNC_SIZE];
         case P2P_SYNC_ON_STREAM:
-            return &team_psync[2 * NVSHMEMI_SYNC_SIZE +
+            return &team_psync[4 * NVSHMEMI_SYNC_SIZE +
                                nvshmemi_device_state_d.gpu_coll_env_params_var.reduce_scratch_size /
                                    sizeof(long) +
                                NVSHMEMI_BCAST_SYNC_SIZE + psync_fcollect_len +

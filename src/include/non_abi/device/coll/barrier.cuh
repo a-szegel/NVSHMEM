@@ -26,8 +26,8 @@ __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void sync_dissem_pow2_t
     nvshmem_team_t team) {
     nvshmemi_team_t *teami = nvshmemi_device_state_d.team_pool[team];
     int size = teami->size;
-    volatile long *pSync = (volatile long *)nvshmemi_team_get_psync(teami, SYNC);
     volatile long *sync_counter = (volatile long *)nvshmemi_team_get_sync_counter(teami);
+    volatile long *pSync = (volatile long *)nvshmemi_team_get_psync(teami, SYNC) + NVSHMEMI_SYNC_SIZE * (sync_counter[0] % 2);
     volatile long *sync_arr = NULL;
     int shift;
     int to_nbr_idx, to_nbr;
@@ -76,8 +76,8 @@ __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void sync_dissem_thread
     nvshmem_team_t team) {
     nvshmemi_team_t *teami = nvshmemi_device_state_d.team_pool[team];
 
-    volatile long *pSync = (volatile long *)nvshmemi_team_get_psync(teami, SYNC);
     volatile long *sync_counter = (volatile long *)nvshmemi_team_get_sync_counter(teami);
+    volatile long *pSync = (volatile long *)nvshmemi_team_get_psync(teami, SYNC) + NVSHMEMI_SYNC_SIZE * (sync_counter[0] % 2);
     int num_phases = 0;
 
     int myIdx = nvshmemi_thread_id_in_threadgroup<SCOPE>();
@@ -182,8 +182,8 @@ __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void sync_dissem_thread
     int start = teami->start;
     int stride = teami->stride;
     int size = teami->size;
-    volatile long *pSync = (volatile long *)nvshmemi_team_get_psync(teami, SYNC);
     volatile long *sync_counter = (volatile long *)nvshmemi_team_get_sync_counter(teami);
+    volatile long *pSync = (volatile long *)nvshmemi_team_get_psync(teami, SYNC) + NVSHMEMI_SYNC_SIZE * (sync_counter[0] % 2);
 
     if (stride > 0) {
         sync_dissem_threadgroup_2<SCOPE>(start, stride, size, pSync, sync_counter);

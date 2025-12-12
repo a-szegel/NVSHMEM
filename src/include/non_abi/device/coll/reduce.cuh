@@ -1013,7 +1013,7 @@ __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void gpu_rdxn_on_demand
         op1 = (TYPE *)dest;
         op2 = (TYPE *)tmp_operand;
         gpu_linear_reduce_threadgroup<TYPE, OP, NVSHMEMI_THREADGROUP_THREAD>(op1, op2, op1, nelems);
-        sync_dissem_threadgroup_2<NVSHMEMI_THREADGROUP_THREAD>(start, stride, size, pSync,
+        sync_dissem_threadgroup_2<NVSHMEMI_THREADGROUP_THREAD>(start, stride, size, pSync + NVSHMEMI_SYNC_SIZE,
                                                                sync_counter);
     }
 }
@@ -1051,8 +1051,8 @@ __device__ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE void gpu_rdxn_recexch_t
     nvshmem_team_t team, TYPE *dst, const TYPE *source, size_t nreduce) {
     nvshmemi_team_t *teami = nvshmemi_device_state_d.team_pool[team];
     TYPE *pWrk = (TYPE *)nvshmemi_team_get_psync(teami, REDUCE);
-    volatile long *pSync = (volatile long *)nvshmemi_team_get_psync(teami, SYNC);
     volatile long *sync_counter = (volatile long *)nvshmemi_team_get_sync_counter(teami);
+    volatile long *pSync = (volatile long *)nvshmemi_team_get_psync(teami, SYNC) + NVSHMEMI_SYNC_SIZE * (sync_counter[0] % 2);
     const int step1_sendto = teami->reduce_recexch.step1_sendto;
     const int step1_nrecvs = teami->reduce_recexch.step1_nrecvs;
     const int *step1_recvfrom = teami->reduce_recexch.step1_recvfrom;
