@@ -1718,21 +1718,11 @@ int nvshmemt_init(nvshmem_transport_t *t, struct nvshmemi_cuda_fn_table *table, 
         NVSHMEMI_NULL_ERROR_JMP(name, status, NVSHMEMX_ERROR_INTERNAL, out,
                                 "ibv_get_device_name failed \n");
 
-        const char *hca_prefix = ibdevx_state->options->HCA_PREFIX;
-        bool device_supported = false;
-
-        if (hca_prefix) {
-            device_supported = strstr(name, hca_prefix) != NULL;
-        } else {
-            device_supported = strstr(name, "mlx5") != NULL || strstr(name, "ibp") != NULL;
-        }
+        bool device_supported = nvshmemt_check_hca_prefix(ibdevx_state->options, name);
 
         if (!device_supported) {
             ftable.close_device(device->common_device.context);
             device->common_device.context = NULL;
-            NVSHMEMI_WARN_PRINT(
-                "device %s is not supported (expected HCA interface: %s). Skipping...\n", name,
-                hca_prefix ? hca_prefix : "mlx5 or ibp");
             continue;
         }
 

@@ -70,7 +70,7 @@ NVSHMEMI_ENV_DEF(IB_NUM_RC_PER_DEVICE, int, 1, NVSHMEMI_ENV_CAT_TRANSPORT,
                  "A device is each enumerated IB device, either a full HCA or a single port of a "
                  "multi-port HCA.")
 
-NVSHMEMI_ENV_DEF(HCA_PREFIX, string, "mlx5", NVSHMEMI_ENV_CAT_TRANSPORT,
+NVSHMEMI_ENV_DEF(HCA_PREFIX, string, "^smi", NVSHMEMI_ENV_CAT_TRANSPORT,
                  "Prefix of HCA interface names. Example, mlx5, ibp.")
 
 NVSHMEMI_ENV_DEF(HCA_LIST, string, "", NVSHMEMI_ENV_CAT_TRANSPORT,

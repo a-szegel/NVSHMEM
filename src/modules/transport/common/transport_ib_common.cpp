@@ -603,3 +603,26 @@ void nvshmemt_mlx5dv_ftable_fini(void **mlx5dv_handle) {
         }
     }
 }
+
+bool nvshmemt_check_hca_prefix(nvshmemi_options_s* options, const char* name) {
+    bool device_supported = false;
+    const char *hca_prefix = "^smi";
+    if (options->HCA_PREFIX_provided) {
+        hca_prefix = options->HCA_PREFIX;
+    }
+
+    if (hca_prefix[0] == '^') {
+        // ignore first letter : "^"
+        device_supported = strstr(name, &hca_prefix[1]) == NULL;
+    } else {
+        device_supported = strstr(name, hca_prefix) != NULL;
+    }
+    if (!device_supported) {
+        NVSHMEMI_WARN_PRINT(
+                "device %s is not supported (expected HCA interface: %s). Skipping...\n", name,
+                hca_prefix);
+    }
+
+
+    return device_supported;
+}

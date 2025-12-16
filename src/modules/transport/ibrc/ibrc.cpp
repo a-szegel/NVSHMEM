@@ -1625,6 +1625,14 @@ int nvshmemt_init(nvshmem_transport_t *t, struct nvshmemi_cuda_fn_table *table, 
         NVSHMEMI_NULL_ERROR_JMP(name, status, NVSHMEMX_ERROR_INTERNAL, out,
                                 "ibv_get_device_name failed \n");
 
+        bool device_supported = nvshmemt_check_hca_prefix(ibrc_state->options, name);
+
+        if (!device_supported) {
+            ftable.close_device(device->common_device.context);
+            device->common_device.context = NULL;
+            continue;
+        }
+
         status =
             ftable.query_device(device->common_device.context, &device->common_device.device_attr);
         NVSHMEMI_NZ_ERROR_JMP(status, NVSHMEMX_ERROR_INTERNAL, out, "ibv_query_device failed \n");

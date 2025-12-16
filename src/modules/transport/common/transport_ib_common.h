@@ -219,6 +219,9 @@ int nvshmemt_ib_common_connect_endpoints(nvshmem_transport_t t, int *selected_de
 nvshmemt_ib_common_ep_ptr_t nvshmemt_ib_common_get_ep_from_qp_index(nvshmem_transport_t t,
                                                                     int qp_index, int pe_index);
 
+/* Helper function to filter devices based on HCA_PREFIX */
+bool nvshmemt_check_hca_prefix(nvshmemi_options_s* options, const char* name);
+
 /* The following code is for dynamic GID detection for RoCE platforms.
    It has been adapted from NCCL: https://gitlab-master.nvidia.com/nccl/nccl/-/merge_requests/359 */
 static sa_family_t env_ib_addr_family(int log_level, nvshmemi_options_s *options) {
