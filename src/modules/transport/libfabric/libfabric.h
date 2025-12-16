@@ -175,6 +175,17 @@ struct nvshmemt_libfabric_endpoint_seq_counter_t {
     }
 };
 
+typedef enum {
+    NVSHMEMT_LIBFABRIC_SEND,
+    NVSHMEMT_LIBFABRIC_ACK,
+    NVSHMEMT_LIBFABRIC_MATCH,
+} nvshmemt_libfabric_recv_t;
+
+typedef enum {
+    NVSHMEMT_LIBFABRIC_RECV_TYPE_ACK,
+    NVSHMEMT_LIBFABRIC_RECV_TYPE_NOT_ACK,
+} nvshmemt_libfabric_recv_type_t;
+
 typedef struct {
     struct fid_ep *endpoint;
     struct fid_cq *cq;
@@ -185,6 +196,41 @@ typedef struct {
     std::unordered_map<uint64_t, std::pair<nvshmemt_libfabric_gdr_op_ctx_t *, int>>
         *proxy_put_signal_comp_map;
 } nvshmemt_libfabric_endpoint_t;
+
+typedef struct nvshmemt_libfabric_gdr_send_p_op {
+    uint64_t value;
+} nvshmemt_libfabric_gdr_send_p_op_t;
+
+typedef struct nvshmemt_libfabric_gdr_send_amo_op {
+    nvshmemi_amo_t op;
+    void *target_addr;
+    void *ret_addr;
+    union {
+        uint64_t retflag;
+        uint32_t sequence_count;
+    };
+    uint64_t swap_add;
+    uint64_t comp;
+    uint32_t size;
+    int src_pe;
+} nvshmemt_libfabric_gdr_send_amo_op_t;
+
+typedef struct nvshmemt_libfabric_gdr_ret_amo_op {
+    void *ret_addr;
+    g_elem_t elem;
+} nvshmemt_libfabric_gdr_ret_amo_op_t;
+
+struct nvshmemt_libfabric_gdr_op_ctx {
+    nvshmemt_libfabric_recv_t type;
+    nvshmemt_libfabric_endpoint_t *ep;
+    union {
+        nvshmemt_libfabric_gdr_send_p_op_t p_op;
+        nvshmemt_libfabric_gdr_send_amo_op_t send_amo;
+        nvshmemt_libfabric_gdr_ret_amo_op_t ret_amo;
+    };
+    struct fi_context2 ofi_context;
+    fi_addr_t src_addr;
+};
 
 typedef enum {
     NVSHMEMT_LIBFABRIC_PROVIDER_VERBS = 0,
@@ -206,22 +252,80 @@ typedef enum {
 class threadSafeOpQueue {
    private:
     std::mutex send_mutex;
-    std::mutex recv_mutex;
+    std::mutex ack_recv_mutex;
+    std::mutex other_recv_mutex;
     std::vector<void *> send;
-    std::deque<void *> recv;
+    std::deque<void *> ack_recv;
+    std::deque<void *> other_recv;
 
    public:
-    void *getNextSend() {
-        void *elem;
+    int getNextSends(void **elems, size_t num_elems = 1) {
         send_mutex.lock();
-        if (send.empty()) {
+        if (send.size() < num_elems) {
+            for (size_t i = 0; i < num_elems; i++) {
+                elems[i] = NULL;
+            }
             send_mutex.unlock();
-            return NULL;
+            return -EAGAIN;
         }
-        elem = send.back();
-        send.pop_back();
+        for (size_t i = 0; i < num_elems; i++) {
+            elems[i] = send.back();
+            send.pop_back();
+            assert(elems[i] != NULL);
+        }
         send_mutex.unlock();
-        return elem;
+        return 0;
+    }
+
+    int getNextAmoOps(nvshmemt_libfabric_gdr_op_ctx_t *send_elems[2],
+                      nvshmemt_libfabric_gdr_op_ctx_t **recv_elem,
+                      nvshmemt_libfabric_recv_type_t recv_type) {
+        int status = 0;
+        int num_sends = 0;
+
+        if (recv_type == NVSHMEMT_LIBFABRIC_RECV_TYPE_NOT_ACK) {
+            other_recv_mutex.lock();
+            if (other_recv.empty()) {
+                *recv_elem = NULL;
+                other_recv_mutex.unlock();
+                return 0;
+            }
+            *recv_elem = (nvshmemt_libfabric_gdr_op_ctx_t *)other_recv.front();
+            if ((&((*recv_elem)->send_amo))->op > NVSHMEMI_AMO_END_OF_NONFETCH) {
+                num_sends = 2;
+            } else {
+                num_sends = 1;
+            }
+            status = getNextSends((void **)send_elems, num_sends);
+            if (status == -EAGAIN) {
+                *recv_elem = NULL;
+                other_recv_mutex.unlock();
+                return -EAGAIN;
+            }
+            assert(recv_elem != NULL);
+            for (int i = 0; i < num_sends; i++) {
+                assert(send_elems[i] != NULL);
+            }
+            other_recv.pop_front();
+            other_recv_mutex.unlock();
+            return 0;
+        } else if (recv_type == NVSHMEMT_LIBFABRIC_RECV_TYPE_ACK) {
+            ack_recv_mutex.lock();
+            if (ack_recv.empty()) {
+                *recv_elem = NULL;
+                ack_recv_mutex.unlock();
+                return 0;
+            }
+            *recv_elem = (nvshmemt_libfabric_gdr_op_ctx_t *)ack_recv.front();
+            assert(*recv_elem != NULL);
+            ack_recv.pop_front();
+            ack_recv_mutex.unlock();
+            return 0;
+        } else {
+            fprintf(stderr, "getNextAmoOps: invalid recv_type: %d\n", recv_type);
+            assert(false);
+            return -EINVAL;
+        }
     }
 
     void putToSend(void *elem) {
@@ -241,33 +345,46 @@ class threadSafeOpQueue {
         return;
     }
 
-    void *getNextRecv() {
-        recv_mutex.lock();
-        void *elem;
-        if (recv.empty()) {
-            recv_mutex.unlock();
-            return NULL;
+    void *getNextRecv(nvshmemt_libfabric_recv_type_t recv_type) {
+        void *elem = NULL;
+        if (recv_type == NVSHMEMT_LIBFABRIC_RECV_TYPE_ACK) {
+            ack_recv_mutex.lock();
+            if (ack_recv.empty()) {
+                ack_recv_mutex.unlock();
+                return NULL;
+            }
+
+            elem = ack_recv.front();
+            ack_recv.pop_front();
+            ack_recv_mutex.unlock();
+            return elem;
+        } else {
+            other_recv_mutex.lock();
+            if (other_recv.empty()) {
+                other_recv_mutex.unlock();
+                return NULL;
+            }
+            elem = other_recv.front();
+            other_recv.pop_front();
+            other_recv_mutex.unlock();
+            return elem;
         }
-        elem = recv.front();
-        recv.pop_front();
-        recv_mutex.unlock();
-        return elem;
     }
 
-    void putToRecv(void *elem) {
-        recv_mutex.lock();
-        recv.push_back(elem);
-        recv_mutex.unlock();
-    }
-
-    void putToRecvBulk(char *elem, size_t elem_size, size_t num_elems) {
-        recv_mutex.lock();
-        for (size_t i = 0; i < num_elems; i++) {
-            recv.push_back(elem);
-            elem = elem + elem_size;
+    void putToRecv(void *elem, nvshmemt_libfabric_recv_type_t recv_type) {
+        if (recv_type == NVSHMEMT_LIBFABRIC_RECV_TYPE_ACK) {
+            ack_recv_mutex.lock();
+            ack_recv.push_back(elem);
+            ack_recv_mutex.unlock();
+        } else if (recv_type == NVSHMEMT_LIBFABRIC_RECV_TYPE_NOT_ACK) {
+            other_recv_mutex.lock();
+            other_recv.push_back(elem);
+            other_recv_mutex.unlock();
+        } else {
+            fprintf(stderr, "putToRecv: invalid recv_type: %d\n", recv_type);
+            assert(false);
+            return;
         }
-        recv_mutex.unlock();
-        return;
     }
 };
 
@@ -299,12 +416,6 @@ typedef struct {
     struct fid_mr *mr_staged_amo_ack;
 } nvshmemt_libfabric_state_t;
 
-typedef enum {
-    NVSHMEMT_LIBFABRIC_SEND,
-    NVSHMEMT_LIBFABRIC_ACK,
-    NVSHMEMT_LIBFABRIC_MATCH,
-} nvshmemt_libfabric_recv_t;
-
 typedef struct {
     struct fid_mr *mr;
     uint64_t key;
@@ -326,24 +437,6 @@ typedef struct {
     nvshmemt_libfabric_mem_handle_ep_t hdls[2];
 } nvshmemt_libfabric_mem_handle_t;
 
-typedef struct nvshmemt_libfabric_gdr_send_p_op {
-    uint64_t value;
-} nvshmemt_libfabric_gdr_send_p_op_t;
-
-typedef struct nvshmemt_libfabric_gdr_send_amo_op {
-    nvshmemi_amo_t op;
-    void *target_addr;
-    void *ret_addr;
-    union {
-        uint64_t retflag;
-        uint32_t sequence_count;
-    };
-    uint64_t swap_add;
-    uint64_t comp;
-    uint32_t size;
-    int src_pe;
-} nvshmemt_libfabric_gdr_send_amo_op_t;
-
 /* Wire data for put-signal gdr staged atomics
  * 32 bytes
  * | 4 type | 2 op | 2 num_writes | 8 signal | 8 target_addr | 4 sequence_count | 4 resv
@@ -359,20 +452,3 @@ typedef struct nvshmemt_libfabric_gdr_signal_op {
 } nvshmemt_libfabric_gdr_signal_op_t;
 /*  EFA's inline send size is 32 bytes */
 static_assert(sizeof(nvshmemt_libfabric_gdr_signal_op_t) == 32);
-
-typedef struct nvshmemt_libfabric_gdr_ret_amo_op {
-    void *ret_addr;
-    g_elem_t elem;
-} nvshmemt_libfabric_gdr_ret_amo_op_t;
-
-struct nvshmemt_libfabric_gdr_op_ctx {
-    nvshmemt_libfabric_recv_t type;
-    nvshmemt_libfabric_endpoint_t *ep;
-    union {
-        nvshmemt_libfabric_gdr_send_p_op_t p_op;
-        nvshmemt_libfabric_gdr_send_amo_op_t send_amo;
-        nvshmemt_libfabric_gdr_ret_amo_op_t ret_amo;
-    };
-    struct fi_context2 ofi_context;
-    fi_addr_t src_addr;
-};
