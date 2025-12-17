@@ -3390,6 +3390,8 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_ibgda_put_signal(
     CONSTANT_ADDRESS_SPACE nvshmemi_ibgda_device_state_t *state = ibgda_get_state();
 #ifndef __clang_llvm_bitcode_lib__
     if (SCOPE == NVSHMEMI_THREADGROUP_THREAD) {
+#else
+    if (nvshmemi_thread_id_in_threadgroup<SCOPE>() == 0) {
 #endif
         if (is_nbi && state->support_half_av_seg)
             nvshmemi_ibgda_put_signal_thread_impl<true, true>(rptr, lptr, bytes, sig_rptr, signal,
@@ -3403,8 +3405,9 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_ibgda_put_signal(
         else
             nvshmemi_ibgda_put_signal_thread_impl<false, false>(rptr, lptr, bytes, sig_rptr, signal,
                                                                 sig_op, pe, qp_index);
+    }
 #ifndef __clang_llvm_bitcode_lib__
-    } else {
+    else {
         if (is_nbi && state->support_half_av_seg)
             nvshmemi_ibgda_put_signal_impl<SCOPE, true, true>(rptr, lptr, bytes, sig_rptr, signal,
                                                               sig_op, pe, qp_index);
