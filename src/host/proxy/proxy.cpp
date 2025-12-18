@@ -139,6 +139,7 @@ int nvshmemi_proxy_setup_device_channels(proxy_state_t *state) {
     nvshmemi_device_state.proxy_channel_g_buf = proxy_channel_g_buf;
     nvshmemi_device_state.proxy_channel_g_coalescing_buf = proxy_channel_g_coalescing_buf;
     assert(proxy_channel_g_buf_size % sizeof(g_elem_t) == 0);
+    assert(G_COALESCING_BUF_SIZE >= (proxy_channel_g_buf_size * 16)); /* This requirement is because of the way g_coaelscing is implemented */
 
 out:
     return status;
