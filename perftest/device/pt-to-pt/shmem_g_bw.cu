@@ -105,23 +105,23 @@ void call_bw(int blocks, int threads, void *data_d, unsigned int *counter_d, siz
              NVSHMEM_DATATYPE_T dt, int mype, int iter, int stride) {
     switch (dt) {
         case NVSHMEM_INT:
-            bw<int><<<blocks, threads>>>((int *)data_d, counter_d, size / sizeof(uint8_t), mype,
+            bw<int><<<blocks, threads>>>((int *)data_d, counter_d, size / sizeof(int), mype,
                                          iter, stride);
             break;
         case NVSHMEM_LONG:
-            bw<long><<<blocks, threads>>>((long *)data_d, counter_d, size / sizeof(uint16_t), mype,
+            bw<long><<<blocks, threads>>>((long *)data_d, counter_d, size / sizeof(long), mype,
                                           iter, stride);
             break;
         case NVSHMEM_LONGLONG:
             bw<long long><<<blocks, threads>>>((long long *)data_d, counter_d,
-                                               size / sizeof(uint32_t), mype, iter, stride);
+                                               size / sizeof(long long), mype, iter, stride);
             break;
         case NVSHMEM_ULONGLONG:
             bw<unsigned long long><<<blocks, threads>>>((unsigned long long *)data_d, counter_d,
-                                                        size / sizeof(double), mype, iter, stride);
+                                                        size / sizeof(unsigned long long), mype, iter, stride);
             break;
         case NVSHMEM_FLOAT:
-            bw<float><<<blocks, threads>>>((float *)data_d, counter_d, size / sizeof(double), mype,
+            bw<float><<<blocks, threads>>>((float *)data_d, counter_d, size / sizeof(float), mype,
                                            iter, stride);
             break;
         case NVSHMEM_DOUBLE:
@@ -130,32 +130,32 @@ void call_bw(int blocks, int threads, void *data_d, unsigned int *counter_d, siz
             break;
         case NVSHMEM_UINT:
             bw<unsigned int><<<blocks, threads>>>((unsigned int *)data_d, counter_d,
-                                                  size / sizeof(double), mype, iter, stride);
+                                                  size / sizeof(unsigned int), mype, iter, stride);
             break;
         case NVSHMEM_INT32:
-            bw<int32_t><<<blocks, threads>>>((int32_t *)data_d, counter_d, size / sizeof(double),
+            bw<int32_t><<<blocks, threads>>>((int32_t *)data_d, counter_d, size / sizeof(int32_t),
                                              mype, iter, stride);
             break;
         case NVSHMEM_UINT32:
-            bw<uint32_t><<<blocks, threads>>>((uint32_t *)data_d, counter_d, size / sizeof(double),
+            bw<uint32_t><<<blocks, threads>>>((uint32_t *)data_d, counter_d, size / sizeof(uint32_t),
                                               mype, iter, stride);
             break;
         case NVSHMEM_INT64:
-            bw<int64_t><<<blocks, threads>>>((int64_t *)data_d, counter_d, size / sizeof(double),
+            bw<int64_t><<<blocks, threads>>>((int64_t *)data_d, counter_d, size / sizeof(int64_t),
                                              mype, iter, stride);
             break;
         case NVSHMEM_UINT64:
-            bw<uint64_t><<<blocks, threads>>>((uint64_t *)data_d, counter_d, size / sizeof(double),
+            bw<uint64_t><<<blocks, threads>>>((uint64_t *)data_d, counter_d, size / sizeof(uint64_t),
                                               mype, iter, stride);
             break;
         case NVSHMEM_FP16:
-            bw<half><<<blocks, threads>>>((half *)data_d, counter_d, size / sizeof(double), mype,
+            bw<half><<<blocks, threads>>>((half *)data_d, counter_d, size / sizeof(half), mype,
                                           iter, stride);
             break;
 #if CUDA_VERSION >= 12020
         case NVSHMEM_BF16:
             bw<__nv_bfloat16><<<blocks, threads>>>((__nv_bfloat16 *)data_d, counter_d,
-                                                   size / sizeof(double), mype, iter, stride);
+                                                   size / sizeof(__nv_bfloat16), mype, iter, stride);
             break;
 #endif
         default:
