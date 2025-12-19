@@ -1356,10 +1356,10 @@ NVSHMEMI_STATIC NVSHMEMI_DEVICE_ALWAYS_INLINE __device__ void nvshmemi_gpu_rdxn_
             teami->size * nreduce * sizeof(TYPE) &&
         nvshmemi_device_state_d.gpu_coll_env_params_var.fcollect_ll_threshold >=
             nreduce * sizeof(TYPE) &&
-        SCOPE == NVSHMEMI_THREADGROUP_BLOCK)
+        SCOPE == NVSHMEMI_THREADGROUP_BLOCK) {
         nvshmemi_gpu_rdxn_hierarchical_fcollect_threadgroup<TYPE, OP, SCOPE>(team, dest, source,
                                                                              nreduce);
-    else if (is_team_world &&
+    } else if (is_team_world && (k == 2 && nvshmemi_check_pow2(teami->size)) &&
              ((nvshmemi_device_state_d.gpu_coll_env_params_var.reduce_scratch_size / 2) /
               sizeof(long)) >=
                  ((k - 1) * nreduce + k * teami->reduce_recexch.step2_nphases * nreduce +

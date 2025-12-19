@@ -22,6 +22,7 @@
 #endif
 #include "non_abi/device/team/nvshmemi_team_defines.cuh"
 
+#ifdef __CUDA_ARCH__
 /* This is signaling function used in barrier algorithm.
 nvshmem_<type>_signal function cannot be used in barrier because it uses a
 combination of P2P path and IB path depending on how the peer GPU is
@@ -34,7 +35,6 @@ as in nvshmem_<type>_signal function, it can lead to race conditions.
 For example NVLink writes (of data and signal) can overtake IB writes.
 And hence the data may not be visible after the barrier operation.
 */
-#ifdef __CUDA_ARCH__
 template <typename T>
 __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_signal_for_barrier(T *dest, const T value,
                                                                           int pe) {
@@ -49,6 +49,10 @@ __device__ NVSHMEMI_DEVICE_ALWAYS_INLINE void nvshmemi_signal_for_barrier(T *des
         nvshmemi_transfer_amo_nonfetch<T>((void *)dest, value, pe, NVSHMEMI_AMO_SIGNAL);
     }
 }
-#endif /* __CUDA_ARCH__ */
 
+__host__ __device__ constexpr bool nvshmemi_check_pow2(const int n) {
+    return ((n > 0) && !(n & (n - 1)));
+}
+
+#endif /* __CUDA_ARCH__ */
 #endif /* NVSHMEMI_DEVICE_COLL_UTILS_H */
