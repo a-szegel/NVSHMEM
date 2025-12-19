@@ -1,4 +1,48 @@
 ===============================================================================
+                               Changes in 3.5.X
+===============================================================================
+# Added tile-granular RMA routines ``tile_put``, ``tile_get``, and ``tile_broadcast`` APIs
+# Added CUTLASS support to tile API
+# Added qpair-specific APIs (``nvshmemx_qp_*``) that provide RMA operations on specific queue pairs abstracted via ``nvshmemx_qp_handle_t``
+# Added LLVM bitcode library support for IBGDA
+# Added option to pass the CUDA device to ``nvshmemx_init_attr`` to set a different device when using NVSHMEM
+# Added environment variable ``NVSHMEM_MAX_PEER_STREAMS`` to set the maximum number of CUDA streams per node
+# Renamed ``tile_allreduce`` to ``tile_reduce`` and ``tile_reduce`` to ``tile_rooted_reduce`` to align with other NVSHMEM collectives
+# Removed static-only version `libnvshmem.a`, users should instead link to `libnvshmem_host` and `libnvshmem_device`
+# Removed `realloc` and `alltoalls` declarations because these functions are not implemented in NVSHMEM
+# Improved EFA transport (libfabric) with multiple bug fixes and performance improvements for AWS environments
+# Updated number of used QPs from 4 to 8 for full bandwidth with data direct
+# Changed default ``NVSHMEM_MAX_MEMORY_PER_GPU`` from 128 GiB to 256 GiB
+# Improved ``NVSHMEM_HCA_PREFIX`` to accept ``^`` and updated default value
+# Refactored team duplication to enable CUDA graph capture
+# Changed to use 1 CUDA stream when NVSwitch is present
+# Updated hydra installation script to install version 4.3.2
+# Improved error catching and reporting for initialization and synchronization routines
+# Fixed race condition in team mapping kernel waiting for peer pe_in_team initialization
+# Fixed race condition in barrier causing hangs on unordered networks
+# Fixed reduce validation issues in cases when PE count was not a power of 2
+# Fixed stream memory operations to use ``cuStreamWriteValue`` only for self-writes
+# Fixed ``nvshmem_calloc`` not taking into account the ``count`` argument
+# Fixed several minor bugs and memory leaks
+
+NVSHMEM4Py
+# Exposed the following APIs to Python: device collectives, AMO and signaling, external buffer registration, arbitrary team creation, multicast buffers, and signal_op for signaling without requiring data movement
+# Added ability to allocate Fortran-memory-ordered arrays and tensors
+# Added CUDA-related search paths and update dependency pinning to enable CUDA 13.0
+# Added flag to disable NVSHMEM4Py device build
+# Added cumodule init/finalize core API support
+# Added safety checks around multicast/peer buffer creation
+# Added ``multicast_array``/``peer_array`` implementations and enable ``bfloat16`` for Numba DSL
+# Added RMA high-level bindings for ``nvshmem.core.device.numba``
+# Added Numbast to generate NVSHMEM CUDA device bindings
+# Added parameter ``except_on_del`` to allocation functions to raise an exception when a buffer leak is discovered or an already freed buffer is used
+# Added missing documentation to high level bindings for nvshmem APIs
+# Changed to use cuda-core pathfinder instead of relying on ``LD_LIBRARY_PATH``
+# Updated `requirements.txt` to pull in the correct versions of `nvcc` and `nvjitlink` which do not interfere with Torch
+# Fixed several minor bugs
+
+
+===============================================================================
                                Changes in 3.4.5
 ===============================================================================
 # Added support for data direct NIC configurations in the IB transports.
