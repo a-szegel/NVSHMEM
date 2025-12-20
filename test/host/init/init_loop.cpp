@@ -1,0 +1,47 @@
+#include <stdio.h>
+#include <cuda.h>
+#include <nvshmem.h>
+#include <nvshmemx.h>
+#ifdef NVSHMEMTEST_MPI_SUPPORT
+#include <mpi.h>
+#endif
+#include <cassert>
+#include <vector>
+#include "utils.h"
+
+#define INIT_DEFAULT_ITERS 150
+
+int main(int argc, char *argv[]) {
+    int devices, num_iters = 0;
+    const char *test_num_iter = getenv("NVSHMEMTEST_INIT_NUM_ITERS");
+    read_args(argc, argv);
+    init_wrapper(&argc, &argv);
+    nvshmem_barrier_all();
+    nvshmem_finalize();
+
+    if (test_num_iter) {
+        num_iters = atoi(test_num_iter);
+    }
+
+    if (num_iters <= 0) {
+        num_iters = INIT_DEFAULT_ITERS;
+    }
+
+    for (int i = 0; i < num_iters; i++) {
+        printf("Step %d\n", i);
+        nvshmem_init();
+        int *destination = NULL;
+        if (use_mmap) {
+            destination = (int *)allocate_mmap_buffer(sizeof(int), _mem_handle_type, use_egm);
+            free_mmap_buffer(destination);
+        } else {
+            destination = (int *)nvshmem_malloc(sizeof(int));
+            nvshmem_free(destination);
+        }
+        nvshmem_finalize();
+        printf("Step %d done\n", i);
+    }
+    nvshmem_init();     /* finalize_wrapper will call nvshmem_finalize();
+                           this is the corresponding init for it */
+    finalize_wrapper(); /* should finalize boostrap stuff as well */
+}

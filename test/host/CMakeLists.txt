@@ -1,0 +1,15 @@
+set(NVSHMEM_TEST_PREFIX "host_")
+macro(nvshmem_add_test SOURCE)
+  nvshmem_add_test_prefix(${SOURCE} ${NVSHMEM_TEST_PREFIX} ON)
+endmacro()
+
+macro(nvshmem_add_test_no_device SOURCE)
+  nvshmem_add_test_prefix(${SOURCE} ${NVSHMEM_TEST_PREFIX} OFF)
+endmacro()
+
+add_subdirectory(coll)
+add_subdirectory(init)
+add_subdirectory(interop)
+add_subdirectory(mem)
+add_subdirectory(pt-to-pt)
+add_subdirectory(team)

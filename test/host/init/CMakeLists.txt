@@ -1,0 +1,21 @@
+nvshmem_add_test(cuobject_init.cpp)
+nvshmem_add_test(nvrtc_api.cpp)
+if(NOT CUDA_VERSION VERSION_LESS 12000)
+  # This test depends on NVJitLink which is not available in CUDA 11.x
+  nvshmem_add_test(nvrtc_numba_ltoir.cpp)
+endif()
+nvshmem_add_test(nvshmemx_init_status.cpp)
+nvshmem_add_test(static_init.cpp)
+nvshmem_add_test(init_loop.cpp)
+nvshmem_add_test(global_exit.cpp)
+
+if(NVSHMEM_MPI_SUPPORT)
+  nvshmem_add_test(mpi_init.cpp)
+  nvshmem_add_test(uid_init.cpp)
+  nvshmem_add_test(nvshmemx_init_with_device.cpp)
+  nvshmem_add_test_no_device(nvshmemx_hostlib_init_attr.cpp)
+endif()
+
+if(NVSHMEM_SHMEM_SUPPORT)
+  nvshmem_add_test(shmem_init.cpp)
+endif()

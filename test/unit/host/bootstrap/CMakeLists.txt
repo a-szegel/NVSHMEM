@@ -1,0 +1,1 @@
+nvshmem_add_unit_test(bootstrap_coll.cpp)

@@ -1,0 +1,6 @@
+CUFFT {
+  global: simplelib1_init;
+          simplelib1_finalize;
+          simplelib1_dowork;
+  local: *;
+};

@@ -1,0 +1,1 @@
+nvshmem_add_test(nccl_nvshmem_interop.cu)

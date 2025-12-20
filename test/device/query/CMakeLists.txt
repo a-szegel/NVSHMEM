@@ -1,0 +1,5 @@
+nvshmem_add_test(hello.cu)
+nvshmem_add_test(hello-team.cu)
+nvshmem_add_test(info.cu)
+nvshmem_add_test(ptr.cu)
+nvshmem_add_test(mc_ptr.cu)

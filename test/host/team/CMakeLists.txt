@@ -1,0 +1,5 @@
+nvshmem_add_test(shmem_team_max.cpp)
+nvshmem_add_test(shmem_team_dup.cpp)
+nvshmem_add_test(shmem_team_reuse_teams.cpp)
+nvshmem_add_test(shmem_team_split_2d.cpp)
+nvshmem_add_test(shmem_team_translate_2.cpp)

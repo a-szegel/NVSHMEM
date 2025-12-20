@@ -1,0 +1,217 @@
+/*
+ * Copyright (c) 2018-2025, NVIDIA CORPORATION. All rights reserved.
+ *
+ * See License.txt for license information
+ */
+#define CUMODULE_NAME "iget.cubin"
+#include "nvshmem.h"
+#include "nvshmemx.h"
+#include "utils.h"
+
+#include <stdio.h>
+#include "ring_alltoall.h"
+
+int ldisp = 2;
+
+#define TEST_NVSHMEM_ALL_CUBIN()                                                       \
+    void *args_all[] = {(void *)&src_, (void *)&dest_, (void *)&ldisp, (void *)&ldisp, \
+                        (void *)&len,  (void *)&mype,  (void *)&npes};                 \
+    CUfunction test_all_cubin;                                                         \
+    if (typeid(T) == typeid(int)) {                                                    \
+        init_test_case_kernel(&test_all_cubin, NVSHMEMI_TEST_STRINGIFY(alltoall_int)); \
+    }                                                                                  \
+    CU_CHECK(cuLaunchKernel(test_all_cubin, 1, 1, 1, 1, 1, 1, 0, cstrm, args_all, NULL));
+
+#define TEST_NVSHMEM_RING_CUBIN()                                                   \
+    void *args_ring[] = {(void *)&src_,  (void *)&dest_, (void *)&ldisp,            \
+                         (void *)&ldisp, (void *)&len,   (void *)&prevpe};          \
+    CUfunction test_ring_cubin;                                                     \
+    if (typeid(T) == typeid(int)) {                                                 \
+        init_test_case_kernel(&test_ring_cubin, NVSHMEMI_TEST_STRINGIFY(ring_int)); \
+    }                                                                               \
+    CU_CHECK(cuLaunchKernel(test_ring_cubin, 1, 1, 1, 1, 1, 1, 0, cstrm, args_ring, NULL));
+
+#define TEST_NVSHMEM_ALL_G_CUBIN(GROUP)                                                        \
+    void *args_all_g[] = {(void *)&src_, (void *)&dest_, (void *)&ldisp, (void *)&ldisp,       \
+                          (void *)&len,  (void *)&mype,  (void *)&npes};                       \
+    CUfunction test_all_cubin;                                                                 \
+    if (typeid(T) == typeid(int)) {                                                            \
+        init_test_case_kernel(&test_all_cubin, NVSHMEMI_TEST_STRINGIFY(alltoall_int_##GROUP)); \
+    }                                                                                          \
+    CU_CHECK(cuLaunchKernel(test_all_cubin, 1, 1, 1, 1, 1, 1, 0, cstrm, args_all_g, NULL));
+
+#define TEST_NVSHMEM_RING_G_CUBIN(GROUP)                                                      \
+    void *args_ring_g[] = {(void *)&src_,  (void *)&dest_, (void *)&ldisp,                    \
+                           (void *)&ldisp, (void *)&len,   (void *)&prevpe};                  \
+    CUfunction test_ring_g_cubin;                                                             \
+    if (typeid(T) == typeid(int)) {                                                           \
+        init_test_case_kernel(&test_ring_g_cubin, NVSHMEMI_TEST_STRINGIFY(ring_int_##GROUP)); \
+    }                                                                                         \
+    CU_CHECK(cuLaunchKernel(test_ring_g_cubin, 1, 1, 1, 1, 1, 1, 0, cstrm, args_ring_g, NULL));
+
+#define DEFINE_RMA_GET_WRAPPER(Group)                                                       \
+    __device__ void rma_iget_wrapper_##Group(int *src, int *dest, int dstride, int sstride, \
+                                             size_t len, int pe) {                          \
+        nvshmemx_int_iget_##Group(dest, src, dstride, sstride, len, pe);                    \
+    }
+
+DEFINE_RMA_GET_WRAPPER(warp)
+DEFINE_RMA_GET_WRAPPER(block)
+
+#define DEFINE_THREADGROUP_API(Group)                                                            \
+    template <typename T>                                                                        \
+    __global__ void alltoall_##Group(T *src, T *dest, int dstride, int sstride, size_t len,      \
+                                     int mype, int npes) {                                       \
+        for (int i = 0; i < npes; i++) {                                                         \
+            rma_iget_wrapper_##Group(src + (size_t)mype * len * (size_t)sstride,                 \
+                                     dest + (size_t)i * len * (size_t)dstride, dstride, sstride, \
+                                     len, i);                                                    \
+        }                                                                                        \
+                                                                                                 \
+        /*nvshmem_quiet();*/                                                                     \
+    }                                                                                            \
+                                                                                                 \
+    template <typename T>                                                                        \
+    __global__ void ring_##Group(T *src, T *dest, int dstride, int sstride, size_t len,          \
+                                 int prevpe) {                                                   \
+        rma_iget_wrapper_##Group(src, dest, dstride, sstride, len, prevpe);                      \
+                                                                                                 \
+        /*nvshmem_quiet();*/                                                                     \
+    }                                                                                            \
+                                                                                                 \
+    template <typename T>                                                                        \
+    void launch_alltoall_##Group(void *src, void *dest, size_t len, int mype, int npes,          \
+                                 cudaStream_t cstrm) {                                           \
+        T *src_ = (T *)src;                                                                      \
+        T *dest_ = (T *)dest;                                                                    \
+        if (use_cubin) {                                                                         \
+            TEST_NVSHMEM_ALL_G_CUBIN(Group);                                                     \
+        } else {                                                                                 \
+            alltoall_##Group<T><<<1, 1, 0, cstrm>>>(src_, dest_, ldisp, ldisp, len, mype, npes); \
+        }                                                                                        \
+    }                                                                                            \
+                                                                                                 \
+    template <typename T>                                                                        \
+    void launch_ring_##Group(void *src, void *dest, size_t len, int nextpe, int prevpe,          \
+                             cudaStream_t cstrm) {                                               \
+        T *src_ = (T *)src;                                                                      \
+        T *dest_ = (T *)dest;                                                                    \
+        if (use_cubin) {                                                                         \
+            TEST_NVSHMEM_RING_G_CUBIN(Group);                                                    \
+        } else {                                                                                 \
+            ring_##Group<T><<<1, 1, 0, cstrm>>>(src_, dest_, ldisp, ldisp, len, prevpe);         \
+        }                                                                                        \
+    }
+
+DEFINE_THREADGROUP_API(warp)
+DEFINE_THREADGROUP_API(block)
+
+__device__ void rma_iget_wrapper(int *src, int *dest, int dstride, int sstride, size_t len,
+                                 int pe) {
+    nvshmem_int_iget(dest, src, dstride, sstride, len, pe);
+}
+
+template <typename T>
+__global__ void alltoall(T *src, T *dest, int dstride, int sstride, size_t len, int mype,
+                         int npes) {
+    for (int i = 0; i < npes; i++) {
+        rma_iget_wrapper(src + (size_t)mype * len * (size_t)sstride,
+                         dest + (size_t)i * len * (size_t)dstride, dstride, sstride, len, i);
+    }
+
+    // nvshmem_quiet();
+}
+
+template <typename T>
+__global__ void ring(T *src, T *dest, int dstride, int sstride, size_t len, int prevpe) {
+    rma_iget_wrapper(src, dest, dstride, sstride, len, prevpe);
+
+    // nvshmem_quiet();
+}
+
+#define ALLTOALL_TEMP()                                                                       \
+    for (int i = 0; i < npes; i++) {                                                          \
+        rma_iget_wrapper(src + (size_t)mype * len * (size_t)sstride,                          \
+                         dest + (size_t)i * len * (size_t)dstride, dstride, sstride, len, i); \
+    }
+
+#define RING_TEMP() rma_iget_wrapper(src, dest, dstride, sstride, len, prevpe);
+
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
+extern "C" {
+#endif
+
+__global__ void alltoall_int(int *src, int *dest, int dstride, int sstride, size_t len, int mype,
+                             int npes) {
+    ALLTOALL_TEMP();
+}
+
+__global__ void ring_int(int *src, int *dest, int dstride, int sstride, int len, int prevpe) {
+    RING_TEMP();
+}
+
+#define DEFINE_Group(Group)                                                                      \
+    __global__ void alltoall_int_##Group(int *src, int *dest, int dstride, int sstride,          \
+                                         size_t len, int mype, int npes) {                       \
+        for (int i = 0; i < npes; i++) {                                                         \
+            rma_iget_wrapper_##Group(src + (size_t)mype * len * (size_t)sstride,                 \
+                                     dest + (size_t)i * len * (size_t)dstride, dstride, sstride, \
+                                     len, i);                                                    \
+        }                                                                                        \
+    }                                                                                            \
+    __global__ void ring_int_##Group(int *src, int *dest, int dstride, int sstride, size_t len,  \
+                                     int prevpe) {                                               \
+        rma_iget_wrapper_##Group(src, dest, dstride, sstride, len, prevpe);                      \
+    }
+DEFINE_Group(warp) DEFINE_Group(block)
+
+#if defined __cplusplus || defined NVSHMEM_HOSTLIB_ONLY
+}
+#endif
+
+template <typename T>
+void launch_alltoall(void *src, void *dest, size_t len, int mype, int npes, cudaStream_t cstrm) {
+    T *src_ = (T *)src;
+    T *dest_ = (T *)dest;
+    if (use_cubin) {
+        TEST_NVSHMEM_ALL_CUBIN();
+    } else {
+        alltoall<T><<<1, 1, 0, cstrm>>>(src_, dest_, ldisp, ldisp, len, mype, npes);
+    }
+}
+
+template <typename T>
+void launch_ring(void *src, void *dest, size_t len, int nextpe, int prevpe, cudaStream_t cstrm) {
+    T *src_ = (T *)src;
+    T *dest_ = (T *)dest;
+    if (use_cubin) {
+        TEST_NVSHMEM_RING_CUBIN();
+    } else {
+        ring<T><<<1, 1, 0, cstrm>>>(src_, dest_, ldisp, ldisp, len, prevpe);
+    }
+}
+
+int main(int c, char *v[]) {
+    int status = 0;
+
+    status = setup(0, ldisp, MAX_MSG_SIZE, ITER, true);
+    if (status) goto out;
+
+    if (use_cubin) {
+        init_cumodule(CUMODULE_NAME);
+    }
+
+    status = test<int>(launch_alltoall<int>, launch_ring<int>);
+    if (status) goto out;
+
+    status = test<int>(launch_alltoall_warp<int>, launch_ring_warp<int>);
+    if (status) goto out;
+
+    status = test<int>(launch_alltoall_block<int>, launch_ring_block<int>);
+    if (status) goto out;
+
+    cleanup();
+
+out:
+    return status;
+}
