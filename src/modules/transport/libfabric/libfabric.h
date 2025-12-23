@@ -14,6 +14,7 @@
 #include <unordered_map>
 #include <utility>
 #include "rdma/fabric.h"
+#include <stdio.h>
 
 // IWYU pragma: no_include <bits/stdint-uintn.h>
 

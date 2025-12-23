@@ -59,7 +59,7 @@ class nvshmemi_mem_p2p_transport {
 
     void set_heap_size_(nvshmemi_symmetric_heap &heap, size_t size) { heap.heap_size_ = size; }
     void set_heap_base_(nvshmemi_symmetric_heap &heap) {
-        int heap_base = 1;
+        static int heap_base = 1;
         void *heap_base_ptr = &heap_base;
         heap.heap_base_ = heap_base_ptr;
     }
